@@ -1,0 +1,312 @@
+\chapter{Marco Teórico / Estado del Arte}
+
+Este capítulo revisa el conocimiento científico relevante para el trabajo, organizado en cuatro
+áreas: la generación automática de informes radiológicos, la explicabilidad de los modelos
+\textit{transformer}, la estimación de incertidumbre y la detección de alucinaciones en modelos
+generativos, y los conjuntos de datos y modelos preentrenados del dominio radiológico. El capítulo
+concluye con una síntesis que sitúa la aportación del trabajo respecto al estado del arte y delimita
+el hueco de investigación que se aborda.
+
+\section{Generación automática de informes radiológicos}
+
+\subsection{De la descripción de imágenes al informe clínico}
+La generación de informes a partir de imágenes médicas hereda su formulación del \textit{image
+captioning}: producir una secuencia de texto condicionada a una imagen. Las primeras aproximaciones
+adoptaron arquitecturas \textbf{codificador--decodificador} en las que una red convolucional
+resumía la imagen en un vector de características y una red recurrente (LSTM o GRU) generaba el texto
+palabra a palabra. La incorporación de mecanismos de \textbf{atención visual} permitió que cada
+palabra generada se condicionara a distintas regiones de la imagen, mejorando tanto la calidad como
+la interpretabilidad aparente de la salida.
+
+El informe radiológico presenta, sin embargo, particularidades que lo distinguen de una simple
+descripción. Es un texto \textbf{largo, estructurado y altamente estandarizado}, organizado en
+secciones (\textit{Findings}, \textit{Impression}) y dominado por un lenguaje clínico repetitivo en
+el que la mayoría de estudios son normales. Estas características motivaron arquitecturas específicas:
+modelos con \textbf{memoria relacional} y módulos de generación guiada por conocimiento, que buscaban
+capturar la estructura del informe y las correlaciones entre hallazgos, y que constituyeron el
+estándar antes de la irrupción de los grandes modelos.
+
+\subsection{La era de los modelos multimodales de lenguaje}
+La generalización de los \textit{transformers} y el preentrenamiento a gran escala dieron lugar a los
+\textbf{modelos multimodales de lenguaje} (MLLM), que acoplan un codificador visual a un modelo de
+lenguaje de gran tamaño mediante una capa de proyección, siguiendo el paradigma de LLaVA
+\parencite{liu2023llava}. Su adaptación al dominio radiológico ha producido generadores de informes
+de calidad notablemente superior. Entre ellos destacan \textbf{LLaVA-Rad} \parencite{llavarad2024},
+que combina un codificador biomédico con un decodificador Vicuna afinado sobre datos de tórax; y
+\textbf{MAIRA-2} \parencite{maira2}, orientado a la \textit{generación anclada} (\textit{grounded
+report generation}): además del texto, produce \textbf{cajas delimitadoras} que localizan cada
+hallazgo, entrenado sobre una combinación de corpus (MIMIC-CXR, PadChest y USMix). Otros sistemas
+recientes exploran el razonamiento por agentes y la integración de herramientas de detección
+especializadas. La Tabla~\ref{tab:modelos} resume las características de los modelos empleados o
+relevantes para este trabajo.
+
+\begin{table}[t]\centering
+\caption{Modelos multimodales de CXR relevantes. RRG = \textit{radiology report generation}.}
+\label{tab:modelos}
+\begin{tabular}{lllc}
+\toprule
+Modelo & Base de lenguaje & Entrenamiento & Anclaje explícito \\ \midrule
+LLaVA-Rad & Vicuna-7B & MIMIC-CXR & No \\
+MAIRA-2   & Vicuna-7B & MIMIC-CXR, PadChest, USMix & Sí (cajas) \\
+CXR-LLAVA & Llama-2-7B & Multi-corpus & No \\ \bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{El problema de la evaluación}
+La evaluación de estos sistemas se apoya tradicionalmente en \textbf{métricas de solapamiento léxico}
+heredadas del resumen automático, como ROUGE \parencite{lin2004rouge}, BLEU o METEOR, que comparan el
+texto generado con el informe de referencia contando $n$-gramas comunes. Estas métricas presentan una
+debilidad grave en radiología: al estar el dominio dominado por informes normales y por un lenguaje
+de plantilla, \textbf{un modelo que memoriza la plantilla mayoritaria obtiene puntuaciones altas sin
+leer realmente la imagen}. Este trabajo constata empíricamente el fenómeno: una variante mejor
+anclada a la imagen puede obtener un ROUGE inferior al de un modelo ciego que reproduce la plantilla.
+
+Por ello, la comunidad ha desarrollado \textbf{métricas de eficacia clínica} que evalúan la
+corrección de los hallazgos y no la coincidencia superficial de palabras: clasificadores de
+etiquetas radiológicas que extraen los hallazgos de ambos informes y los comparan (obteniendo
+precisión, sensibilidad y $F_1$ por patología), y métricas basadas en grafos de conocimiento que
+contrastan las entidades clínicas y sus relaciones. Entre las primeras destacan los
+\textbf{clasificadores de etiquetas radiológicas} como \textbf{CheXbert} \parencite{smit2020chexbert},
+que combina reglas expertas y un modelo BERT afinado para extraer de cada informe un vector de
+hallazgos —presente, ausente o incierto para cada patología— y calcular métricas de precisión,
+sensibilidad y $F_1$ sobre esa comparación; entre las segundas, las basadas en \textbf{grafos de
+conocimiento} como \textbf{RadGraph} \parencite{jain2021radgraph}, que representa las entidades
+clínicas de un informe (hallazgos, anatomía, atributos) y sus relaciones en un grafo estructurado, y
+cuya comparación entre grafo generado y grafo de referencia (\textit{RadGraph~$F_1$}) penaliza tanto
+los hallazgos inventados como los omitidos con mayor granularidad que un simple recuento de
+etiquetas. Estas métricas se aproximan mucho más al criterio del radiólogo que el solapamiento léxico,
+aunque a costa de depender de un extractor de hallazgos que introduce su propio error —una limitación
+que este trabajo evita adoptando, en su lugar, fuentes de verdad ya estructuradas (MeSH, hallazgos de
+radiólogo) y un juez de lenguaje sobre la narrativa completa (Capítulo~4)—. La distinción
+entre \emph{corrección clínica} y
+\emph{similitud textual} es central para este trabajo, pues motiva que la fiabilidad se defina en
+términos de acierto sobre hallazgos significativos y no de solapamiento léxico. En consecuencia, la
+frontera de la investigación se ha desplazado de \emph{generar mejor} a \emph{saber cuándo fiarse} de
+lo generado: la fiabilidad y la explicabilidad.
+
+\section{Anatomía y funcionamiento de un modelo multimodal de lenguaje}
+Comprender cómo funciona internamente un MLLM es imprescindible para justificar por qué las señales
+empleadas en este trabajo —el mapa de calor de atención y las probabilidades de los tokens— son
+precisamente las que son. Esta sección describe sus componentes.
+
+\subsection{El \textit{transformer} y el mecanismo de atención}
+La arquitectura \textit{transformer} \parencite{vaswani2017} sustituyó la recurrencia por el
+mecanismo de \textbf{auto-atención}: cada elemento de una secuencia calcula una combinación ponderada
+del resto, donde los pesos —la \emph{atención}— se obtienen de la similitud entre una \textit{query} y
+unas \textit{keys}. Formalmente, $\mathrm{Attention}(Q,K,V)=\mathrm{softmax}(QK^{\top}/\sqrt{d})V$.
+Este mecanismo, además de su eficacia, expone una magnitud interpretable —cuánto atiende cada token a
+cada otro— que está en el origen del debate sobre si la atención constituye una explicación, y que
+este trabajo aprovecha y, al mismo tiempo, somete a validación.
+
+\subsection{El codificador visual}
+Para procesar la imagen, los MLLM emplean un \textbf{Vision Transformer} (ViT)
+\parencite{dosovitskiy2021}, que divide la imagen en una rejilla de \textbf{parches} (por ejemplo,
+$16\times16$ o $14\times14$ píxeles), los proyecta linealmente en \textit{tokens} y les aplica
+auto-atención como si fueran palabras. El resultado es una secuencia de \textbf{características por
+parche} más un \textit{token} global (CLS). Esta rejilla de parches es la que confiere \emph{estructura
+espacial} a la atención: al promediar la atención que los tokens de texto dirigen a los tokens
+visuales y reordenarla en la rejilla, se obtiene el mapa de calor sobre la imagen. En los codificadores
+empleados en este trabajo, dicha rejilla es de $37\times37$ parches. Codificadores auto-supervisados de
+dominio, como RAD-DINO \parencite{perezgarcia2024}, aprenden estas representaciones sin supervisión
+textual y mejoran la calidad del anclaje.
+
+\subsection{El conector y el preentrenamiento contrastivo}
+El puente entre la imagen y el modelo de lenguaje —el \textbf{conector}— adopta distintas formas: una
+simple \textbf{proyección lineal} de las características visuales al espacio del lenguaje (como en
+LLaVA \parencite{liu2023llava}), un módulo de consulta aprendido (\textit{Q-Former}) que resume la
+imagen en unos pocos tokens (BLIP-2 \parencite{li2023blip2}), o \textbf{atención cruzada con
+compuerta} intercalada en el decodificador (Flamingo \parencite{alayrac2022}). El generador propio de
+este trabajo adopta esta última vía. Con frecuencia, el codificador visual se ha alineado previamente
+con el texto mediante un \textbf{preentrenamiento contrastivo} de tipo CLIP \parencite{radford2021},
+que aproxima en un espacio común los embeddings de imágenes y textos emparejados; la Etapa~1 del
+modelo propio reproduce esta idea.
+
+\subsection{El decodificador y la generación}
+Una vez inyectadas las características visuales, un \textbf{modelo de lenguaje} decodificador genera el
+informe de forma \textbf{autorregresiva}: en cada paso produce una distribución de probabilidad sobre
+el vocabulario y emite un token. Este proceso es la segunda fuente de señal que explota el trabajo: la
+\textbf{probabilidad} que el modelo asigna a cada token generado —y su entropía— son un subproducto
+directo del paso hacia adelante, disponible \emph{sin coste adicional} en cualquier generador. El
+entrenamiento suele constar de una fase de alineamiento y una de \textit{instruction tuning} visual
+\parencite{liu2023llava}, que enseña al modelo a seguir la instrucción de describir la imagen.
+
+\paragraph{Consecuencia metodológica.} La arquitectura anterior explica por qué las dos señales
+centrales del trabajo son \emph{naturales} y \emph{agnósticas al modelo}: la atención de los tokens de
+texto hacia los tokens visuales proporciona el \textbf{mapa de calor} (la explicación de \emph{dónde}
+mira el modelo), y la distribución de probabilidad de cada token proporciona la \textbf{incertidumbre}
+(la señal de \emph{cuánto} fiarse). Ambas se obtienen del mismo paso de inferencia que ya se ejecuta
+para generar el informe, sin modelos auxiliares ni cómputo extra.
+
+\section{Por qué abordar el problema desde la fiabilidad y la incertidumbre}
+La decisión de centrar el trabajo en la fiabilidad —y no en mejorar la generación— responde a un
+diagnóstico del estado del arte. Por un lado, la calidad del texto generado por los MLLM de CXR
+\emph{se está saturando}, mientras que el verdadero cuello de botella para su adopción clínica es la
+\textbf{confianza}: la tendencia de estos modelos a alucinar sigue siendo la principal barrera
+\parencite{ji2023}. Por otro, existen dos grandes familias de señales de fiabilidad: las
+\textbf{externas}, que requieren un verificador adicional (un informe de referencia u otro modelo), y
+las \textbf{intrínsecas}, que se leen de la propia salida del modelo. Este trabajo prioriza las
+segundas por tres razones: son \textbf{agnósticas al modelo} (transfieren a cualquier generador), están
+\textbf{disponibles en inferencia} sin coste adicional, y capturan la información de que el propio
+modelo dispone sobre su acierto —los modelos de lenguaje, en buena medida, ``saben lo que saben''
+\parencite{kadavath2022}—. La cuestión abierta, que el trabajo aborda, es si esa información se lee
+mejor en la \emph{forma} de la explicación visual o en la \emph{incertidumbre} de la decisión, y si,
+una vez elegida, resulta \textbf{calibrable} \parencite{guo2017} para su uso clínico.
+
+\section{Explicabilidad en modelos \textit{transformer}}
+
+\subsection{¿Es la atención una explicación?}
+La explicabilidad de los \textit{transformers} gira en gran medida en torno a si los pesos de
+\textbf{atención} constituyen una explicación válida de sus decisiones. El debate quedó planteado por
+\textcite{jain2019}, que mostraron que es posible encontrar distribuciones de atención muy distintas
+que producen la misma predicción, cuestionando que la atención sea \emph{fiel} al razonamiento del
+modelo. La réplica de \textcite{wiegreffe2019} matizó la conclusión: la atención sí porta información
+explicativa bajo ciertas condiciones y su utilidad depende de cómo se defina y evalúe una
+explicación. Este debate es directamente pertinente para la radiología, donde el mapa de calor de
+atención se ofrece con frecuencia como justificación visual del diagnóstico.
+
+\subsection{Métodos de atribución y agregación}
+Para agregar la atención a lo largo de las múltiples capas del modelo se propuso el \textit{attention
+rollout} \parencite{abnar2020}, que compone las matrices de atención capa a capa teniendo en cuenta
+las conexiones residuales. Métodos posteriores como el de \textcite{chefer2021} combinan atención y
+gradientes para obtener mapas de relevancia más fieles, propagando la relevancia a través de la red
+de forma consistente con las reglas de conservación. En paralelo, la familia de métodos basados en
+\textbf{gradientes} produce mapas de saliencia a partir de los gradientes de la salida respecto a las
+activaciones intermedias: el \textit{class activation mapping} y su generalización \textbf{Grad-CAM}
+ponderan los mapas de características por la importancia del gradiente para obtener una localización
+gruesa de la evidencia, mientras que los métodos de \textbf{propagación de relevancia} redistribuyen la
+puntuación de salida hacia atrás, capa a capa, hasta la entrada. Cada familia tiene ventajas e
+inconvenientes: los mapas de atención son baratos pero de fidelidad discutida; los basados en
+gradientes son más costosos y sensibles al ruido; y los de propagación exigen reglas específicas por
+tipo de capa. Frente a ellos, \textit{Integrated
+Gradients} \parencite{sundararajan2017} mide la contribución causal de cada entrada integrando los
+gradientes a lo largo de un camino desde una referencia neutra hasta la entrada real, ofreciendo
+\textbf{garantías axiomáticas} (sensibilidad e invariancia de implementación) de las que la atención
+carece.
+
+\subsection{Evaluación objetiva de la fidelidad}
+La proliferación de métodos hace imprescindible \textbf{evaluar objetivamente} la fidelidad de una
+explicación, en lugar de limitarse a comparar mapas entre sí. Las \textbf{métricas de perturbación}
+—eliminación e inserción de las regiones más relevantes— y las nociones de
+\textit{comprehensiveness} (cuánto cae la confianza al eliminar lo señalado como importante) y
+\textit{sufficiency} (cuánta confianza se conserva reteniendo solo lo importante), formalizadas en el
+\textit{benchmark} ERASER \parencite{deyoung2020}, permiten cuantificar si la explicación captura de
+verdad lo que impulsa la predicción. Este trabajo adopta esta filosofía: la explicación se valida
+frente a \textbf{referencias objetivas} —cajas delimitadoras reales y perturbaciones controladas— en
+lugar de asumir su fidelidad por inspección visual. Como advertencia transversal, \textcite{ghassemi2021}
+argumentan que las explicaciones locales por saliencia en salud pueden generar una
+\textbf{falsa sensación de confianza} y fomentar el sesgo de automatización si se presentan como
+garantía de fiabilidad sin validación, lo que refuerza la necesidad de distinguir entre \emph{dónde}
+mira el modelo y \emph{cuánto} debe fiarse el clínico de su veredicto.
+
+\section{Incertidumbre y detección de alucinaciones}
+
+\subsection{Naturaleza de las alucinaciones}
+En los modelos generativos de lenguaje se denomina \textbf{alucinación} a la producción de
+afirmaciones no sustentadas por la evidencia. Los estudios de síntesis del fenómeno
+\parencite{ji2023} distinguen entre alucinaciones \emph{intrínsecas} (que contradicen la entrada) y
+\emph{extrínsecas} (no verificables con ella), y las atribuyen a factores tanto de los datos —sesgos y
+ruido en el corpus de entrenamiento— como de la propia decodificación —la exposición a su propia
+salida y la tendencia a completar patrones plausibles—. En
+la generación de informes radiológicos, esta taxonomía se concreta en dos modos de error
+clínicamente opuestos: la \textbf{alucinación} propiamente dicha —afirmar un hallazgo agudo que no
+está presente (falso positivo)— y la \textbf{omisión} o \textit{miss} —no reportar un hallazgo agudo
+que sí lo está (falso negativo)—. Ambos comprometen la seguridad del paciente de forma distinta y,
+como se mostrará, presentan una \textbf{firma de incertidumbre radicalmente diferente}, lo que
+constituye uno de los ejes del presente trabajo.
+
+\subsection{Cuantificación de la incertidumbre}
+La detección de alucinaciones se ha vinculado más a la \textbf{incertidumbre del propio modelo} que a
+sus explicaciones visuales. Las señales más directas son de \textbf{nivel de token}: la probabilidad
+asignada por el modelo a cada token generado y la \textbf{entropía predictiva} de la distribución en
+cada paso. La probabilidad mínima a lo largo de la secuencia (el token menos seguro) y la fracción de
+tokens de baja probabilidad son resúmenes habituales. Estas señales presentan, no obstante,
+\textbf{confusores} conocidos —la longitud del texto, la posición del token o su función sintáctica—
+que este trabajo controla explícitamente. Un refinamiento propuesto es la \textbf{entropía semántica}
+\parencite{kuhn2023}, que agrupa las generaciones equivalentes en significado antes de medir la
+incertidumbre, de modo que la variabilidad puramente léxica no infle la estimación.
+
+\subsection{Auto-consistencia y calibración}
+Una vía complementaria y \textbf{agnóstica al modelo} (solo requiere poder muestrear) es la
+\textbf{auto-consistencia}: SelfCheckGPT \parencite{manakul2023} detecta alucinaciones sin recursos
+externos generando varias muestras y midiendo su acuerdo, bajo la hipótesis de que un contenido
+factual tiende a repetirse mientras que uno alucinado varía entre muestras. Esta idea se ha adaptado
+específicamente a la generación de informes radiológicos mediante métodos de tipo caja negra que
+muestrean varios informes y contrastan la consistencia de cada afirmación, como RadFlag
+\parencite{radflag2024}, que combina muestreo y un juez de lenguaje para marcar las afirmaciones poco
+respaldadas. El presente trabajo se relaciona con esta línea pero se diferencia de ella en que, además
+de la consistencia, estudia la señal de probabilidad de token —más barata, pues no exige múltiples
+generaciones—, la caracteriza frente a las omisiones y la valida de forma cruzada entre modelos y
+dominios. Finalmente, para que una
+señal de confianza sea útil no basta con que discrimine: debe estar \textbf{calibrada}, es decir, que
+una confianza estimada del 20\,\% corresponda a un 20\,\% de aciertos observados. La calibración se
+evalúa con curvas de fiabilidad y con el error de calibración esperado, y se corrige con métodos como
+la regresión de Platt o la regresión isotónica. La literatura advierte, además, de que el ajuste por
+refuerzo con retroalimentación humana tiende a producir modelos \textbf{sobre-confiados}, lo que
+puede degradar precisamente las señales de probabilidad en modelos muy afinados. Estas ideas motivan
+que en este trabajo se evalúen la probabilidad de los tokens y la variabilidad entre muestras como
+señales candidatas, que se controle su calibración y que se declaren sus límites. La
+Tabla~\ref{tab:senales_lit} resume las familias de señales revisadas y su coste.
+
+\begin{table}[t]\centering
+\caption{Familias de señales de incertidumbre revisadas en la literatura. Coste en inferencia: sin
+generaciones adicionales (bajo) o con varias muestras extra (alto).}
+\label{tab:senales_lit}
+\begin{tabular}{p{4.3cm}lp{2.9cm}p{3.3cm}}
+\toprule
+Señal & Nivel & Coste & Referencia \\ \midrule
+Probabilidad de token (mín./media) & Token & Bajo & Este trabajo \\
+Entropía predictiva & Token & Bajo & --- \\
+Entropía semántica & Secuencia & Alto (agrupa muestras) & \parencite{kuhn2023} \\
+Auto-consistencia (SelfCheckGPT) & Secuencia & Alto ($K$ muestras) & \parencite{manakul2023} \\
+Auto-consistencia + juez (RadFlag) & Secuencia & Alto ($K$ muestras + juez) & \parencite{radflag2024} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Datos y modelos preentrenados en radiología}
+
+\subsection{Conjuntos de datos}
+La disponibilidad de datos condiciona fuertemente el dominio. El conjunto \textbf{NIH ChestX-ray8}
+\parencite{wang2017} aporta clasificación multi-etiqueta y, de forma parcial, \textbf{localización
+mediante cajas delimitadoras} para ocho patologías, lo que lo hace idóneo como referencia objetiva de
+anclaje. \textbf{Open-I / Indiana University X-ray} \parencite{demnerfushman2016} es prácticamente el
+único conjunto de acceso libre con \textbf{informes narrativos completos} y, además, con diagnóstico
+estructurado (términos MeSH), lo que permite un etiquetado objetivo del error. Corpus de mayor tamaño
+como \textbf{MIMIC-CXR} ofrecen cientos de miles de informes pero requieren credenciales
+restringidas. \textbf{PadChest} y su subconjunto anclado \textbf{PadChest-GR} \parencite{padchestgr2024}
+aportan un dominio distinto (población española), anotaciones de hallazgos \textbf{presentes y
+ausentes} por radiólogo y cajas, resultando idóneos tanto como segunda fuente de verdad objetiva
+—independiente del juez basado en modelo de lenguaje— como para evaluar la generalización fuera de
+distribución.
+
+\subsection{Codificadores y destilación de conocimiento}
+La restricción de datos narrativos motiva el uso de \textbf{destilación de conocimiento} desde
+modelos preentrenados libres. En el eje textual, \textbf{CXR-BERT} \parencite{boecking2022} es un
+codificador de lenguaje con semántica clínica, entrenado para alinear texto e imagen radiológicos; en
+el eje visual, \textbf{RAD-DINO} \parencite{perezgarcia2024} es un codificador de imagen radiológica
+auto-supervisado que aprende representaciones potentes sin depender de supervisión textual, y que
+constituye, de hecho, el codificador visual de MAIRA-2. La destilación permite mejorar un modelo
+propio de escala reducida sin acceso a datos adicionales, convirtiendo la limitación de datos en una
+decisión metodológica deliberada. El panorama de generadores del estado del arte es, además,
+crecientemente diverso: junto a los modelos densos de tipo LLaVa han aparecido sistemas de
+\textit{grounded reporting} que producen cajas, modelos de propósito médico general y enfoques de
+razonamiento por agentes que combinan varios modelos especializados. Esta diversidad refuerza el
+interés de disponer de una señal de fiabilidad \textbf{agnóstica al generador}, que pueda aplicarse a
+cualquiera de ellos sin depender de su arquitectura interna, como la que este trabajo propone.
+
+\section{Síntesis y hueco de investigación}
+De la revisión anterior se desprende un panorama consistente. Los MLLM de CXR del estado del arte
+generan texto de calidad y muestran alta especificidad, pero adolecen de dos carencias: una
+\textbf{sensibilidad limitada} —tienden a omitir hallazgos, con una especificidad notablemente
+superior a su sensibilidad ante la patología \parencite{frontiers2025}— y, sobre todo, una
+\textbf{ausencia de explicabilidad validada}, como se ha discutido en las Secciones~3.2 y~3.4. Al
+mismo tiempo, la literatura de explicabilidad
+advierte de que las explicaciones visuales pueden ser \textbf{engañosas} si se asumen fiables sin
+validación \parencite{ghassemi2021}, y la literatura de incertidumbre ofrece señales prometedoras
+—probabilidad de token, entropía semántica, auto-consistencia— pero desarrolladas, en su mayoría,
+sobre modelos de lenguaje generales y sin una validación cruzada entre modelos y dominios en el
+ámbito radiológico. Este trabajo se sitúa precisamente en ese hueco: en lugar de proponer otro
+generador, \textbf{audita objetivamente} si la explicación de un MLLM de CXR está anclada, comprueba
+si su morfología permite detectar los errores, y determina dónde reside realmente la señal de
+fiabilidad, validándola de forma cruzada sobre dos modelos y dos dominios y traduciéndola a una
+confianza calibrada por informe.

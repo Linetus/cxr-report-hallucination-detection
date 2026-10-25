@@ -1,0 +1,55 @@
+% RESUMEN (IMRyD, ~300 palabras) + ABSTRACT en inglés.
+\chapter*{Resumen}\addcontentsline{toc}{chapter}{Resumen}
+
+La generación automática de informes de radiografía de tórax mediante modelos multimodales de
+lenguaje (MLLM) es prometedora, pero su fiabilidad y la fidelidad de sus explicaciones visuales están
+poco estudiadas, lo que limita su adopción clínica. Este trabajo evalúa si la explicación visual de
+estos modelos (o su propia incertidumbre) permite estimar la fiabilidad de cada informe. Se
+implementa un marco de explicabilidad y se valida el anclaje de la atención de forma objetiva contra
+las cajas delimitadoras reales de NIH ChestX-ray8. El estudio de fiabilidad se articula como un diseño
+\(2\times2\) que cruza dos generadores del estado del arte (LLaVA-Rad y MAIRA-2) con dos dominios
+(Open-I, Estados Unidos; y PadChest-GR, España), etiquetando cada informe como correcto, alucinación u
+omisión mediante tres fuentes de verdad independientes (diagnóstico estructurado MeSH, hallazgos
+presentes/ausentes de radiólogo y juez basado en modelo de lenguaje). Los resultados muestran que la
+atención está clínicamente anclada (lift global 3,03), pero la morfología de la explicación no predice
+la fiabilidad. Este resultado se confirma incluso con las cajas de anclaje entrenadas del propio
+modelo, que localiza sus alucinaciones de forma plausible. En cambio, la incertidumbre de la decisión, medida
+como la probabilidad mínima de contenido, detecta las alucinaciones con AUC 0,90 (Open-I) y se
+transfiere de forma robusta a otro modelo y a otro dominio (AUC 0,80--0,81), salvo en un generador
+débil fuera de distribución. La señal es asimétrica: detecta las fabricaciones, pero no las omisiones,
+que son errores confiados de sensibilidad. Una vez calibrada, la señal se traduce en una confianza por
+informe con bandas de riesgo (``semáforo'') y en una demostración interactiva que integra informe,
+anclaje y confianza. El hallazgo más relevante del trabajo es que, en los modelos y dominios
+evaluados, la detección de alucinaciones mediante incertidumbre generativa resulta una señal
+de fiabilidad más útil que la morfología de la explicación visual: es cuantificable, se transfiere
+entre modelos y dominios, y es apta para el cribado clínico.
+
+\vspace{0.4cm}\noindent\textbf{Palabras clave:} informes radiológicos, modelos multimodales,
+explicabilidad, detección de alucinaciones, incertidumbre.
+
+\chapter*{Abstract}\addcontentsline{toc}{chapter}{Abstract}
+
+Automatic chest X-ray report generation with multimodal large language models (MLLM) is promising, but
+the reliability of these models and the faithfulness of their visual explanations remain understudied,
+hindering clinical adoption. This work assesses whether a model's visual explanation (or its own
+uncertainty) can estimate the reliability of each report. An explainability framework is implemented
+and the grounding of the model's attention is objectively validated against the real bounding boxes of
+NIH ChestX-ray8. The reliability study follows a \(2\times2\) design crossing two state-of-the-art
+generators (LLaVA-Rad and MAIRA-2) with two domains (Open-I, United States; and PadChest-GR, Spain),
+labelling each report as correct, hallucination or omission through three independent ground-truth
+sources (structured MeSH diagnosis, radiologist present/absent findings, and a language-model judge).
+Results show that attention is clinically grounded (global lift 3.03), yet the morphology of the
+explanation does not predict reliability. This finding is confirmed even with the model's own trained
+grounding boxes, which plausibly localise its hallucinations. Instead, decision uncertainty, measured
+as the minimum content-token probability, detects hallucinations with AUC 0.90 (Open-I) and transfers
+robustly across model and domain (AUC 0.80--0.81), except for a weak generator out of distribution.
+The signal is asymmetric: it detects fabrications but not omissions, which are confident sensitivity
+errors. Once calibrated, the signal yields a per-report confidence with risk bands (a ``traffic
+light'') and an interactive demo integrating report, grounding and confidence. The most relevant
+finding of this work is that, across the models and domains evaluated, hallucination detection
+via generative uncertainty is a more useful reliability signal than the morphology of the visual
+explanation: it is quantifiable, transfers across models and domains, and is suitable for clinical
+triage.
+
+\vspace{0.4cm}\noindent\textbf{Keywords:} radiology reporting, multimodal models, explainability,
+hallucination detection, uncertainty.

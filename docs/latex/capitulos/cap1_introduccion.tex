@@ -1,0 +1,128 @@
+\chapter{Introducción al Trabajo Fin de Máster}
+% BORRADOR para editar a tu voz (estilo impersonal UAX). Recomendado: 5-10 páginas.
+
+La interpretación de imágenes médicas es una de las tareas de mayor valor y, a la vez, de mayor
+carga asistencial dentro del sistema sanitario. La radiografía de tórax (CXR) es la prueba de
+imagen más solicitada del mundo, y la redacción de su informe consume una parte considerable del
+tiempo del radiólogo. En este contexto, la generación automática de informes mediante inteligencia
+artificial se presenta como una vía prometedora de asistencia. Sin embargo, para que un sistema de
+este tipo sea aceptable en la práctica clínica no basta con que produzca un texto plausible: debe
+ser posible saber \textit{cuándo fiarse} de él y \textit{por qué} concluye lo que concluye. Este
+capítulo introduce la motivación del trabajo, el problema que aborda y la organización de la
+memoria.
+
+\section{Justificación del proyecto realizado}
+
+Mi pareja se encontraba realizando un grado de Imagen para el Diagnóstico y Medicina Nuclear, y debido
+a esto tuve la oportunidad de hablar con algunos de los profesores del centro sobre cómo la tecnología
+y, en concreto, la inteligencia artificial estaban teniendo un impacto importante en la profesión. De
+ahí, la conversación derivó a los principales problemas que tenían con ella (sobre todo la generativa,
+no la clasificadora clásica, que lleva muchísimo tiempo en la industria y va por una rama completamente
+distinta a la que usa VLMs), y el tema que más se repetía era la falta de explicabilidad, lo ``caja
+negra'' que es, que impide a los radiólogos comprender el porqué del diagnóstico, ya que, a diferencia
+de los modelos clasificadores, que simplemente clasifican una patología (de manera correcta o
+incorrecta), los VLMs dan una explicación de lo que ven en la imagen para apoyar el diagnóstico, pero,
+muchas veces, esto resulta en alucinaciones, que producen el efecto contrario al que se quiere generar:
+en este caso, agilizar y facilitar el diagnóstico mediante estas radiografías, que, al tener estas
+``alucinaciones'', o errores de interpretación, hacen que se dedique más tiempo a la revisión. Esto hizo
+que mi planteamiento inicial fuese intentar encontrar una manera de ``explicar'' el diagnóstico del
+modelo mediante mapas de calor que interpretasen la ``atención'' del modelo hacia distintas zonas de la
+imagen. Si bien, por las propias circunstancias del proyecto, se acabó derivando gran parte del esfuerzo
+a otras áreas, la intención seguía siendo la misma: facilitar la comprensión y aumentar la confianza de
+los profesionales sanitarios en los VLMs mediante explicabilidad.
+
+Desde el punto de vista de su utilidad, el proyecto se sitúa en la intersección de tres
+necesidades actuales. En el ámbito \textbf{clínico}, la presión asistencial y la escasez de
+radiólogos hacen atractiva cualquier herramienta que agilice el flujo de trabajo sin comprometer
+la seguridad del paciente. En el ámbito \textbf{científico-técnico}, los modelos multimodales de
+lenguaje (MLLM) han alcanzado una notable competencia en tareas de imagen y texto, pero su
+aplicación a dominios de alta responsabilidad exige garantías de fiabilidad y trazabilidad de las
+que todavía carecen. Y en el ámbito \textbf{ético y regulatorio}, la interpretabilidad de los
+sistemas de IA en salud no es una característica opcional sino un requisito: un modelo cuyas
+decisiones no pueden auditarse difícilmente será adoptado. El presente trabajo se orienta a este
+espacio, estudiando no solo la generación de informes sino, sobre todo, la \textbf{fidelidad y el
+anclaje clínico de sus explicaciones} y la posibilidad de estimar la \textbf{confianza} en cada
+informe generado.
+
+\section{Presentación del proyecto y sus contenidos}
+El problema que se aborda puede enunciarse de forma simple: un sistema que genera informes
+radiológicos produce, para cada afirmación, una explicación visual (un mapa de calor que señala la
+región de la imagen que la motivó); la cuestión es si esa explicación es \textit{fiel} al
+razonamiento del modelo, si está \textit{anclada} a la anatomía correcta y, en última instancia,
+si permite \textbf{detectar cuándo el modelo se equivoca}.
+
+Considérese, a modo de ilustración, un sistema que informa ``cardiomegalia'' sobre una radiografía
+de tórax normal. Si junto al texto se muestra un mapa de calor razonablemente centrado sobre la
+silueta cardíaca, el radiólogo dispone de una pista de \emph{dónde} ha mirado el modelo, pero no de
+ninguna garantía de que ese mismo patrón de atención no acompañe también a sus aciertos: una
+explicación visualmente plausible puede convivir con un contenido incorrecto. La pregunta que
+articula el trabajo es, precisamente, si existe alguna señal —en la propia explicación o en la
+confianza interna del modelo— capaz de distinguir este caso del de un informe verdaderamente
+correcto, antes de que el error llegue al informe final.
+
+Para responderla, el trabajo contribuye en cuatro frentes. En primer lugar, se desarrolla un
+\textbf{generador propio} encoder--decoder multimodal, en el que la restricción de datos se
+convierte en una decisión metodológica mediante la destilación de conocimiento desde modelos
+preentrenados libres. En segundo lugar, se construye un \textbf{marco de explicabilidad} que
+evalúa dos ejes: la fidelidad de las explicaciones y su anclaje clínico. En tercer lugar, dado que
+un modelo de escala reducida limita el alcance del análisis, se \textbf{eleva el estudio a un MLLM
+del estado del arte} (LLaVA-Rad) y se valida su anclaje de forma \textbf{objetiva} contra
+anotaciones reales de localización. Por último, se investiga si la explicación —o la propia
+incertidumbre del modelo— permite \textbf{detectar alucinaciones}, y se comprueba que la señal de
+confianza resultante es \textbf{agnóstica al modelo y robusta al dominio} mediante una réplica en un
+segundo generador (MAIRA-2) y un segundo dominio (PadChest-GR); la señal se \textbf{calibra} como una
+confianza por informe y se materializa en una demostración interactiva que integra informe, anclaje y
+fiabilidad.
+
+El interés del problema se ha intensificado con la irrupción de los \textbf{modelos multimodales de
+lenguaje} (MLLM), que acoplan un potente codificador visual a un modelo de lenguaje de gran tamaño y
+han elevado de forma notable la calidad del texto generado a partir de imágenes. Su aplicación a la
+radiografía de tórax promete asistir en la redacción del informe, agilizando el flujo de trabajo. Sin
+embargo, esta misma potencia trae consigo un riesgo característico: la \textbf{alucinación}, es decir,
+la generación de afirmaciones plausibles pero no sustentadas por la imagen. En un dominio de alta
+responsabilidad como el diagnóstico por imagen, una alucinación no detectada puede tener consecuencias
+graves, y una omisión —no reportar un hallazgo presente— otras distintas pero igualmente serias. Por
+ello, el problema no es solo generar buen texto, sino \textbf{saber cuándo el texto generado es
+fiable}, y hacerlo de una forma que el clínico pueda interpretar y en la que pueda confiar. Es en esta
+intersección —entre la capacidad generativa de los MLLM y la exigencia de fiabilidad y transparencia
+del entorno clínico— donde se inscribe el presente trabajo.
+
+\section{Preguntas de investigación}
+El problema anterior se concreta en cuatro preguntas de investigación que vertebran el trabajo:
+\begin{itemize}
+  \item \textbf{PI1.} ¿Está la atención de un MLLM de radiografía de tórax \emph{anclada} sobre la
+  región anatómica de la lesión, contrastada con anotaciones objetivas de localización?
+  \item \textbf{PI2.} ¿Permite la \emph{morfología} de la explicación (la forma del mapa de calor, o
+  las cajas de anclaje del propio modelo) detectar cuándo el modelo se equivoca?
+  \item \textbf{PI3.} ¿Permite la \emph{incertidumbre} de la decisión del modelo detectar sus errores,
+  y con qué asimetría entre alucinaciones y omisiones?
+  \item \textbf{PI4.} ¿Es esa señal de fiabilidad \emph{agnóstica al modelo y robusta al dominio}, es
+  decir, se transfiere a otro generador y a otra población?
+\end{itemize}
+
+\clearpage
+\section{Contribuciones}
+Las principales contribuciones del trabajo son las siguientes. Primera, una \textbf{auditoría
+objetiva del anclaje} de la atención de un MLLM de CXR frente a cajas delimitadoras reales. Segunda,
+la constatación —por triple vía, incluida la de las cajas entrenadas del propio modelo— de que la
+\textbf{morfología de la explicación no predice la fiabilidad}, así como la identificación de varios
+\emph{artefactos} metodológicos que solo un control cuidadoso de confusores reveló. Tercera, la
+\textbf{disociación} entre errores detectables por incertidumbre (alucinaciones) y errores confiados
+(omisiones), y la propuesta de una señal de confianza \textbf{simple, agnóstica y disponible en
+inferencia}. Cuarta, una \textbf{validación cruzada} de dicha señal en un diseño de dos generadores
+por dos dominios, que demuestra su robustez. Y quinta, su \textbf{calibración} y su traducción en una
+demostración interactiva que integra informe, anclaje y confianza para el clínico. Como aportación
+metodológica menor, se documenta que \emph{excluir el token de apertura del informe} mejora de forma
+sistemática la señal de incertidumbre.
+
+La memoria se organiza como sigue. El Capítulo~2 fija el objetivo general y los específicos, y
+explica cómo evolucionó el alcance del proyecto hasta llegar a ellos. El Capítulo~3 revisa el estado
+del arte en cuatro frentes: generación automática de informes, funcionamiento interno de los modelos
+multimodales, explicabilidad de \textit{transformers} y detección de incertidumbre y alucinaciones. El
+Capítulo~4 describe en detalle la metodología: la población y la muestra, las hipótesis, las variables
+y los instrumentos de medida, la arquitectura del generador propio y el diseño experimental. El
+Capítulo~5 presenta los resultados siguiendo el orden en que se han enunciado las preguntas de
+investigación, y los discute a la luz de la literatura y de sus implicaciones prácticas. El
+Capítulo~6, por último, recoge las conclusiones, valora las limitaciones —incluidas las derivadas de
+las condiciones materiales del proyecto— y traza las líneas futuras, tanto de investigación como de
+mejora del sistema.

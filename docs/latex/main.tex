@@ -1,0 +1,298 @@
+% =====================================================================
+%  TFM — Máster Universitario en Inteligencia Artificial
+%  Autor: Daniel Gómez Arranz  ·  Convocatoria: Septiembre 2026
+%  Compilar:  pdflatex main → biber main → pdflatex main → pdflatex main
+%  (o subir la carpeta a Overleaf y compilar con biber).
+% =====================================================================
+\documentclass[12pt,a4paper]{report}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish,es-tabla]{babel}
+\usepackage{graphicx,booktabs,amsmath,amssymb,siunitx,array}
+\usepackage[a4paper,top=2.5cm,bottom=2.5cm,left=3cm,right=3cm]{geometry}
+\usepackage{setspace}
+\usepackage{caption}
+\usepackage{csquotes}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,fit,backgrounds}
+\usepackage{placeins}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true,linkcolor=black,citecolor=blue,urlcolor=blue}
+
+% --- Color de títulos según la plantilla oficial UAX (azul #2F5496) ---
+\usepackage{xcolor}
+\usepackage{titlesec}
+\definecolor{uaxblue}{HTML}{2F5496}
+\titleformat{\chapter}[display]
+  {\normalfont\Huge\bfseries\color{uaxblue}}{\chaptertitlename\ \thechapter}{20pt}
+  {\Huge\raggedright\hyphenpenalty=10000\exhyphenpenalty=10000}
+\titleformat{\section}
+  {\normalfont\Large\bfseries\color{uaxblue}}{\thesection}{1em}{}
+\titleformat{\subsection}
+  {\normalfont\large\bfseries\color{uaxblue}}{\thesubsection}{1em}{}
+
+% --- Bibliografía APA 6ª (requisito UAX) ---
+\usepackage[style=apa,backend=biber]{biblatex}
+\DeclareLanguageMapping{spanish}{spanish-apa}
+\addbibresource{refs.bib}
+
+\graphicspath{{figuras/}}
+\onehalfspacing
+% El estilo "Texto TFM" de la plantilla Word (alias del estilo Normal) no usa sangría de
+% primera línea y añade 24pt de espacio antes y después de cada párrafo; replicado aquí.
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{10pt}
+
+% --- Encabezado y pie de página según la plantilla oficial UAX ---
+\usepackage{fancyhdr}
+\newcommand{\tfmautor}{Gómez Arranz, Daniel}
+\newcommand{\tfmtitulocorto}{Fiabilidad de informes radiológicos generados por IA}
+\newcommand{\tfmheaderfooter}{%
+  \fancyhf{}
+  \renewcommand{\headrulewidth}{0.4pt}
+  \renewcommand{\footrulewidth}{0.4pt}
+  \fancyhead[L]{\small\tfmautor}
+  \fancyhead[R]{\raisebox{-0.28\height}{\includegraphics[width=2.6cm]{uax_business_tech_wordmark.png}}}
+  \fancyfoot[L]{\small\tfmtitulocorto}
+  \fancyfoot[R]{\small\thepage}
+}
+\pagestyle{fancy}
+\tfmheaderfooter
+\fancypagestyle{plain}{\tfmheaderfooter}
+\setlength{\headheight}{32pt}
+\setlength{\headsep}{28pt}
+\setlength{\footskip}{40pt}
+
+\begin{document}
+
+\input{portada}
+
+\input{agradecimientos}
+
+\input{resumen}
+
+\tableofcontents
+\listoffigures
+\listoftables
+
+\input{capitulos/cap1_introduccion}
+\input{capitulos/cap2_objetivos}
+\input{capitulos/cap3_marco_teorico}
+\input{capitulos/cap4_metodologia}
+\input{capitulos/cap5_resultados}
+\input{capitulos/cap6_conclusiones}
+
+% --- Bibliografía ---
+\chapter*{Bibliografía}\addcontentsline{toc}{chapter}{Bibliografía}
+\printbibliography[heading=none]
+
+% --- Anexos (formato libre, no puntúan, máx. ~20% del contenido) ---
+\appendix
+\chapter{Anexos: detalles de reproducibilidad}
+
+Este anexo recoge los detalles técnicos que permiten reproducir los experimentos. No forma parte de
+la evaluación pero documenta las decisiones de implementación.
+
+\section{Entornos de ejecución}
+Los experimentos se ejecutan en Python sobre dos entornos aislados, dado que los dos generadores
+exigen versiones incompatibles de la biblioteca de \textit{transformers}. El entorno de LLaVA-Rad
+emplea \texttt{transformers 4.31} y \texttt{torch 2.0}; el de MAIRA-2, \texttt{transformers 4.46} y
+\texttt{torch 2.1}. Ambos generadores se cargan con cuantización a 8 bits mediante
+\texttt{bitsandbytes}, lo que permite ejecutar modelos de 7\,mil millones de parámetros en una única
+tarjeta gráfica de 12\,GB de memoria.
+
+\section{Extracción de señales}
+Para cada imagen se realiza una pasada que produce: (i) el informe voraz junto con las probabilidades
+y entropías por token; (ii) $K=4$ muestras estocásticas para la auto-consistencia; y (iii) una
+generación con la imagen en blanco para la dependencia de imagen. En el subconjunto con mapa de calor
+se añade una pasada con salida de atención. La extracción es resumible: los resultados se
+escriben incrementalmente en formato JSONL, de modo que un proceso interrumpido se reanuda saltando
+los identificadores ya procesados. El rendimiento es de aproximadamente 27--42\,segundos por imagen
+según el modelo.
+
+\section{Hiperparámetros de generación}
+El informe principal se genera de forma voraz (\textit{greedy}, sin muestreo) con un máximo
+de 60--120 tokens nuevos. Las $K$ muestras de auto-consistencia se generan con muestreo estocástico
+(temperatura $0{,}8$, \textit{top-}$p$ $0{,}95$). La generación con imagen en blanco emplea una imagen
+de valor cero del mismo tamaño. Para MAIRA-2, el anclaje se obtiene activando la generación con cajas
+y analizando la secuencia resultante en frases y coordenadas normalizadas.
+
+\section{Acceso a los datos y etiquetado}
+Se emplean tres conjuntos de acceso libre: Open-I / Indiana University (informes y términos MeSH), NIH
+ChestX-ray8 (cajas de ocho patologías) y un subconjunto de PadChest-GR (hallazgos presentes/ausentes
+y cajas). El etiquetado por juez se ejecuta de forma reproducible y con escritura incremental, con una
+rúbrica fija que restringe la evaluación a los hallazgos agudos significativos.
+
+\section{Métodos estadísticos}
+La capacidad discriminativa se mide con el área bajo la curva ROC, calculada mediante el estadístico
+de Mann--Whitney sobre rangos para garantizar reproducibilidad. Los intervalos de confianza se
+estiman por \textit{bootstrap} estratificado (2000 remuestreos) y la significancia frente al azar, con
+tests de permutación. La calibración se evalúa por bandas de riesgo definidas sobre cuartiles de la
+distribución de los informes correctos. Todo el control de confusores (longitud, posición del token,
+tipo de mapa de calor) se realiza mediante residualización o comparaciones emparejadas.
+
+\section{Hardware}
+Todos los experimentos se ejecutan localmente en una tarjeta gráfica NVIDIA de gama de consumo con
+12\,GB de memoria, lo que demuestra la viabilidad del enfoque sin infraestructura especializada.
+
+\chapter{Anexos: manual de usuario de la demostración}
+
+Este anexo describe el uso de la demostración interactiva desarrollada, que materializa el sistema de
+informe, anclaje y confianza. Se proporcionan dos aplicaciones equivalentes, una por generador, dado
+que ambos modelos no caben simultáneamente en la memoria de una única tarjeta gráfica de 12\,GB.
+
+\section{Puesta en marcha}
+Cada aplicación se lanza de forma independiente desde su entorno correspondiente. La aplicación de
+LLaVA-Rad se sirve en un puerto local y muestra el anclaje mediante mapa de calor; la de
+MAIRA-2, en otro puerto, muestra el anclaje mediante cajas generadas por el propio modelo.
+Al arrancar, la aplicación carga el modelo cuantizado (unos treinta segundos) y queda accesible desde
+un navegador web en la dirección local indicada. Alternativamente, cada aplicación puede lanzarse
+mediante la imagen Docker correspondiente (Anexo de organización del repositorio), lo que
+evita instalar manualmente el entorno Python y sus versiones fijadas; en ese caso, los pesos del
+modelo se descargan automáticamente en el primer arranque.
+
+\section{Interfaz y flujo de trabajo}
+La interfaz se organiza en tres paneles, alineados con la propuesta del trabajo:
+\begin{itemize}
+  \item \textbf{Panel izquierdo: informe.} Muestra la radiografía cargada y, debajo, el informe
+  generado por el modelo. El usuario puede subir su propia imagen o seleccionar uno de los ejemplos
+  incluidos, que además presentan el \emph{veredicto real del radiólogo} para comparar.
+  \item \textbf{Panel central: anclaje.} Muestra \emph{dónde} mira el modelo: el mapa de calor de
+  atención (LLaVA-Rad) o las cajas de localización (MAIRA-2). Sirve como evidencia visual de la
+  afirmación, no como prueba de acierto.
+  \item \textbf{Panel derecho: confianza.} Muestra el semáforo calibrado: una banda de
+  verde a rojo con un marcador en la posición de la puntuación del informe, la banda de riesgo
+  correspondiente y una tabla con la probabilidad de alucinación de cada banda. Incluye la advertencia
+  de que el verde indica baja probabilidad de alucinación pero no garantiza la ausencia de omisiones.
+\end{itemize}
+El flujo de uso previsto es: cargar la imagen, pulsar \emph{Analizar} y leer el informe consultando el
+anclaje como apoyo y el semáforo para priorizar la revisión de los casos en zona roja. Las
+Figuras~\ref{fig:app_llavarad} y~\ref{fig:app_maira} muestran las dos aplicaciones en ejecución sobre
+un caso real de cada conjunto.
+
+\begin{figure}[p]\centering
+\includegraphics[width=0.95\linewidth]{fig_app_llavarad.png}
+\caption{Aplicación de LLaVA-Rad en ejecución sobre un caso real de Open-I. El modelo alucina una
+masa pulmonar inexistente (compárese con el veredicto real del radiólogo, panel superior); el
+semáforo lo detecta correctamente y lo sitúa en zona roja (\emph{min\_prob} 0,11, P(alucinación)
+$\approx$ 30\,\%).}
+\label{fig:app_llavarad}
+\end{figure}
+
+\begin{figure}[p]\centering
+\includegraphics[width=0.95\linewidth]{fig_app_maira.png}
+\caption{Aplicación de MAIRA-2 en ejecución sobre un caso real de PadChest-GR. El modelo también
+alucina en este caso; el semáforo lo sitúa igualmente en zona roja (\emph{min\_prob} 0,12,
+P(alucinación) $\approx$ 14\,\%). El panel de anclaje muestra la imagen con las cajas propias del
+modelo cuando las genera.}
+\label{fig:app_maira}
+\end{figure}
+\FloatBarrier
+
+\section{Instalación y ejecución con Docker (paso a paso)}
+Esta sección explica cómo poner en marcha ambas demostraciones en un ordenador que no tiene instalado
+ni Python ni las bibliotecas del proyecto (por ejemplo, el equipo de un profesor evaluador), usando
+únicamente Docker. No se requiere ningún conocimiento de programación; basta con ejecutar los
+comandos indicados en una terminal.
+
+\paragraph{Requisitos.} Un equipo con Docker Desktop instalado (gratuito, disponible para
+Windows, macOS y Linux desde \url{https://www.docker.com/products/docker-desktop/}) y, para las
+demostraciones (no para compilar la memoria), una tarjeta gráfica NVIDIA con al menos
+12\,GB de memoria y el \textit{NVIDIA Container Toolkit} instalado, que permite a Docker acceder a la
+GPU. Sin GPU es posible, aun así, compilar la memoria en PDF con la primera imagen descrita a
+continuación.
+
+\paragraph{Paso 1: obtener el código.} Descomprimir el paquete del proyecto (o clonar el repositorio)
+en cualquier carpeta local, y abrir una terminal en la carpeta raíz del proyecto (la que contiene la
+carpeta \texttt{docker/}).
+
+\paragraph{Paso 2: construir las imágenes.} Cada imagen se construye una única vez; la construcción
+tarda varios minutos porque descarga las bibliotecas necesarias, pero no requiere ninguna interacción:
+\begin{verbatim}
+docker build -t tfm-llavarad -f docker/Dockerfile.llavarad .
+docker build -t tfm-maira2   -f docker/Dockerfile.maira2   .
+\end{verbatim}
+
+\paragraph{Paso 3: lanzar una demostración.} Las dos aplicaciones no caben a la vez en una GPU de
+12\,GB, por lo que se lanzan una cada vez:
+\begin{verbatim}
+docker run --rm --gpus all -p 7860:7860 \
+  -v hf_cache_llavarad:/hf_cache tfm-llavarad
+docker run --rm --gpus all -p 7862:7862 \
+  -v hf_cache_maira2:/hf_cache tfm-maira2
+\end{verbatim}
+La primera vez que se ejecuta cada comando, el contenedor descarga automáticamente los pesos del
+modelo desde \textit{Hugging Face Hub} (varios minutos, según la conexión) y los conserva en el
+volumen indicado, de modo que los arranques posteriores son mucho más rápidos. El acceso al modelo
+\texttt{microsoft/maira-2} exige haber aceptado su licencia en Hugging Face con la cuenta cuyo token
+se utilice; el contenedor solicitará este dato la primera vez si no está ya configurado mediante la
+variable de entorno \texttt{HF\_TOKEN}.
+
+\paragraph{Paso 4: abrir la demostración.} Cuando la terminal muestra que el servidor está listo,
+basta con abrir un navegador web en \url{http://127.0.0.1:7860} (LLaVA-Rad) o
+\url{http://127.0.0.1:7862} (MAIRA-2) y usar la interfaz descrita en la sección anterior. Para
+detener la aplicación es suficiente con cerrar la terminal o pulsar \texttt{Ctrl+C}.
+
+\paragraph{Compilar la memoria sin instalar LaTeX.} De forma análoga, la memoria en PDF puede
+regenerarse sin instalar ninguna distribución LaTeX localmente:
+\begin{verbatim}
+docker build -t tfm-latex -f docker/Dockerfile.latex .
+docker run --rm \
+  -v "RUTA_ABSOLUTA_AL_PROYECTO/memoria:/memoria" tfm-latex
+\end{verbatim}
+sustituyendo \texttt{RUTA\_ABSOLUTA\_AL\_PROYECTO} por la ruta local del proyecto; el PDF resultante
+se escribe directamente en la carpeta \texttt{memoria/}. Los detalles adicionales (versiones fijadas,
+\texttt{docker compose} como alternativa) se documentan en el Anexo de organización del repositorio.
+
+\section{Interpretación de la salida}
+Un informe en zona verde indica que el modelo ha generado su veredicto con alta confianza y
+baja probabilidad de alucinación; el radiólogo puede revisarlo con menor prioridad, sin olvidar la
+posibilidad de una omisión. Un informe en zona roja señala alta incertidumbre y una
+probabilidad de alucinación elevada; debe revisarse de forma prioritaria. Las bandas intermedias
+gradúan esa prioridad. En todo caso, la decisión final corresponde siempre al facultativo.
+
+\chapter{Anexos: organización del repositorio}
+
+El código del proyecto se organiza de forma modular para separar responsabilidades y facilitar la
+reproducibilidad, siguiendo la arquitectura por capas descrita en el Capítulo~4.
+
+\section{Estructura}
+El módulo de datos agrupa la ingesta y el preprocesado de los conjuntos empleados. El módulo
+de modelos contiene la arquitectura del generador propio (codificador visual, decodificador
+con atención cruzada y su ensamblaje). El módulo de explicabilidad implementa la extracción
+del mapa de calor, las métricas de anclaje y la evaluación de fidelidad por oclusión. El módulo de
+entrenamiento orquesta las dos etapas (alineamiento contrastivo y ajuste generativo). Los
+scripts de extracción producen, para cada modelo y conjunto, los ficheros de señales en
+formato JSONL reanudable, y los scripts de análisis calculan las métricas de detección y calibración.
+Finalmente, la demostración contiene las dos aplicaciones interactivas.
+
+\section{Reproducibilidad}
+Cada experimento se acompaña de sus scripts y de los ficheros intermedios (señales, etiquetas,
+figuras), de modo que los resultados de la memoria pueden regenerarse. Los procesos largos se ejecutan
+de forma reanudable, escribiendo su salida de forma incremental, lo que permite reanudarlos tras una
+interrupción sin repetir el trabajo ya realizado.
+
+\section{Contenerización y portabilidad}
+Para evitar que la reproducibilidad dependa de instalar manualmente una distribución LaTeX o los dos
+entornos Python de inferencia (cada uno con una combinación de versiones específica y ya
+depurada de conflictos entre \textit{bibliotecas}), el repositorio incluye tres imágenes
+Docker independientes. La primera compila la memoria (\texttt{pdflatex} + \texttt{biber} +
+\texttt{biblatex-apa} + TikZ) sin requerir ninguna instalación local de LaTeX; basta con montar el
+directorio \texttt{memoria/} como volumen. Las otras dos reproducen, respectivamente, el entorno de
+LLaVA-Rad y el de MAIRA-2 empleados en las demostraciones (Anexo de manual de usuario), fijando las
+mismas versiones validadas en el Anexo de reproducibilidad (incluida la combinación específica
+de \texttt{gradio~3.50.2} con \texttt{pydantic~1.x} necesaria para evitar la incompatibilidad con
+\texttt{pydantic~2} presente en versiones más recientes de Gradio). Los pesos de los modelos no
+se empaquetan en las imágenes, que quedarían así de decenas de gigabytes: se descargan de
+\textit{Hugging Face Hub} en el primer arranque de cada contenedor y se conservan en un volumen
+persistente para no repetir la descarga.
+
+Como el objetivo tras concluir la fase de entrenamiento es poder continuar la redacción de la memoria
+en cualquier dispositivo sin necesidad de GPU, el repositorio se distribuye también en un
+paquete portable reducido (código, memoria, demostraciones y los resultados intermedios del
+análisis) que excluye deliberadamente los conjuntos de datos crudos, los \textit{checkpoints} de
+entrenamiento y la caché de modelos (del orden de 90\,GB en conjunto y prescindibles para este fin),
+documentando en un fichero de nivel superior cómo y por qué se han omitido, y cómo recuperarlos si en
+el futuro fuese necesario reanudar el entrenamiento.
+
+\end{document}

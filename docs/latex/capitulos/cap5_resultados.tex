@@ -1,0 +1,453 @@
+\chapter{Presentación de análisis, resultados y discusión}
+% Redacción con números finales (2026-08-10): 2x2 modelo x dominio, MAIRA-2, token de apertura,
+% calibración y demos. Estilo impersonal UAX. Cada figura se justifica explícitamente en el texto.
+
+En este capítulo se describe la muestra analizada, se presentan los resultados y se discute su
+significado. La línea argumental es la siguiente: la atención del modelo está clínicamente anclada,
+pero su morfología no permite estimar la fiabilidad; esta reside en la \emph{incertidumbre de la
+decisión} del propio modelo y se detecta, sobre todo, para un tipo de error —las alucinaciones—. Se
+demuestra que la señal es \emph{agnóstica al modelo} y \emph{robusta al dominio} validándola sobre
+dos generadores (LLaVA-Rad y MAIRA-2) y dos dominios (Estados Unidos y España), y se traduce en una
+confianza calibrada apta para el cribado clínico.
+
+\section{Análisis descriptivo de la muestra}
+El estudio de fiabilidad se articula como un diseño \(2\times2\) que cruza \textbf{dos generadores}
+—LLaVA-Rad (7B, entrenado sobre MIMIC-CXR) y MAIRA-2 (7B, entrenado sobre MIMIC-CXR, PadChest y
+USMix)— con \textbf{dos dominios}: Open-I (Indiana University, EE.\,UU.) y PadChest-GR (España). Para
+cada celda se generan informes y se etiqueta cada uno como \emph{correcto}, \emph{alucinación}
+(afirmar un hallazgo agudo ausente) u \emph{omisión} o \emph{miss} (perder un hallazgo agudo
+presente). El etiquetado combina tres fuentes de verdad independientes para evitar la circularidad
+de un único juez: diagnóstico estructurado oficial (MeSH de Open-I; hallazgos presentes/ausentes de
+PadChest-GR) y juicio basado en modelo de lenguaje sobre la narrativa completa (\emph{G-Eval}). El
+anclaje de la atención se evalúa aparte sobre las \textbf{984 anotaciones con caja} de NIH
+ChestX-ray8. La Tabla~\ref{tab:muestra} resume las cuatro celdas. La prevalencia de error y el
+predominio de informes normales son característicos del dominio; la cardiomegalia sobre-diagnosticada
+en tórax normal aparece como sesgo sistemático de \emph{ambos} generadores.
+
+\begin{table}[t]\centering
+\caption{Muestra del diseño \(2\times2\) (etiquetas objetivas/G-Eval). n = informes; alu = alucinaciones; mis = omisiones.}
+\label{tab:muestra}
+\begin{tabular}{llrrr}
+\toprule
+Generador & Dominio & n & alu & mis \\ \midrule
+LLaVA-Rad & Open-I (in-distribution)  & 800 & 110 & 228 \\
+LLaVA-Rad & PadChest (OOD)            & 381 & 33  & 130 \\
+MAIRA-2   & PadChest (in-distribution)& 379 & 27  & 80  \\
+MAIRA-2   & Open-I (OOD)              & 300 & 12  & 22  \\ \bottomrule
+\end{tabular}
+\end{table}
+
+\section{El generador propio y la lección sobre las métricas}
+El generador propio se desarrolló de forma deliberada como paso previo a emplear un modelo del
+estado del arte ya entrenado: construirlo desde cero permite observar su \textbf{funcionamiento
+interno} —cómo se integra la señal visual en la generación de texto, y dónde falla— de un modo que
+un modelo de caja cerrada no ofrece, y expone de primera mano las \textbf{limitaciones propias de un
+modelo de menor capacidad} entrenado con datos escasos. En su implementación se documentaron y
+resolvieron dos fallos característicos. El primero, el \textbf{colapso de la generación} al inyectar la atención
+cruzada: la contribución visual, inicialmente ruidosa, desestabilizaba el decodificador preentrenado;
+se mitigó con la \textbf{compuerta inicializada a cero}, que preserva el comportamiento del modelo de
+lenguaje y deja que la señal visual se incorpore de forma gradual. El segundo, la \textbf{ceguera a la
+imagen}: el decodificador tendía a ignorar la imagen y a reproducir la plantilla mayoritaria; se
+mitigó congelando el decodificador base y entrenando solo la atención cruzada (PEFT).
+
+Sobre esta base se diseñó una ablación (Tabla~\ref{tab:ablacion}) que introduce progresivamente la
+destilación de conocimiento textual y visual, con el objetivo de medir su efecto sobre la calidad y el
+anclaje. La lección metodológica más relevante emergió al evaluar estas variantes: la métrica
+\textbf{ROUGE engaña}. Una variante mejor anclada a la imagen —que describe hallazgos reales— puede
+obtener un ROUGE \emph{inferior} al de un modelo ciego que memoriza la plantilla ``normal'', porque en
+un dominio dominado por informes normales el solapamiento léxico premia la reproducción de la
+plantilla, no la lectura de la imagen. Este hallazgo, coherente con la crítica del Capítulo~3, motivó
+el abandono de las métricas de solapamiento en favor de la \textbf{corrección clínica} y, en última
+instancia, el giro de todo el trabajo hacia la \textbf{fiabilidad}. Junto con las limitaciones de
+capacidad ya observadas en el propio modelo, esta lección sobre las métricas es la que llevó a
+\textbf{elevar el análisis a un MLLM del estado del arte} (LLaVA-Rad): solo un generador de calidad
+suficiente permite separar los errores reales de los artefactos de un modelo de escala reducida, y
+solo evaluando la corrección clínica —no el solapamiento léxico— tiene sentido preguntarse si la
+explicación o la incertidumbre predicen la fiabilidad.
+
+\begin{table}[t]\centering
+\caption{Ablación de destilación del generador propio (M0--M3): fuentes de conocimiento introducidas.}
+\label{tab:ablacion}
+\begin{tabular}{lll}
+\toprule
+Variante & Destilación textual & Destilación visual \\ \midrule
+M0 (línea base) & --- & --- \\
+M1 & CXR-BERT (torre congelada) & --- \\
+M2 & CXR-BERT (destilación al \emph{student}) & --- \\
+M3 & CXR-BERT (destilación) & RAD-DINO (CLS $\to$ CLS) \\ \bottomrule
+\end{tabular}
+\end{table}
+
+\section{La atención está clínicamente anclada}
+Contrastada con las cajas reales de NIH, la atención de LLaVA-Rad se concentra sobre la lesión muy
+por encima del azar: \textbf{lift global 3,03} y \emph{pointing-game} 0,38 (3,7 veces el azar). El
+anclaje varía con sentido clínico (Tabla~\ref{tab:nih}): fuerte en hallazgos focales pequeños
+(nódulo, masa), débil en la cardiomegalia, difusa y de caja grande. Este resultado justifica el uso
+del mapa de calor como puntero de \emph{dónde} mira el modelo, pero —como se verá— no como medida de
+\emph{cuánto} fiarse.
+
+\begin{table}[t]\centering
+\caption{Anclaje objetivo sobre NIH (n = 388 hallazgos detectados). Lift = energía-en-caja / azar.}
+\label{tab:nih}
+\begin{tabular}{lrrr}
+\toprule
+Patología & Detección & Lift & Pointing \\ \midrule
+Nódulo & 0,22 & 7,91 & 0,47 \\ Masa & 0,18 & 5,10 & 0,87 \\
+Atelectasia & 0,29 & 3,45 & 0,30 \\ Derrame & 0,58 & 3,23 & 0,36 \\
+Neumotórax & 0,74 & 2,81 & 0,37 \\ Neumonía & 0,29 & 2,67 & 0,23 \\
+Infiltrado & 0,19 & 2,62 & 0,48 \\ Cardiomegalia & 0,58 & 1,63 & 0,39 \\ \midrule
+\textbf{Global} & 0,39 & \textbf{3,03} & 0,38 \\ \bottomrule
+\end{tabular}
+\end{table}
+
+La Figura~\ref{fig:nih} ilustra visualmente este anclaje: para cada patología se muestran los casos de
+mayor \emph{lift}, con el mapa de calor superpuesto y la caja real. Se observa que la atención se
+concentra sobre la lesión, de forma especialmente nítida en los hallazgos focales pequeños (nódulo,
+masa, neumotórax) y más difusa en la cardiomegalia, de caja grande.
+
+\begin{figure}[p]\centering
+\includegraphics[height=0.92\textheight]{fig_nih_montage.png}
+\caption{Anclaje de la atención sobre NIH por patología (casos de mayor \emph{lift}). Mapa de calor
+superpuesto y caja real (verde); se indica el \emph{lift}, el acierto/fallo del veredicto y el área
+relativa de la caja. La atención se concentra sobre la lesión, sobre todo en hallazgos focales.}
+\label{fig:nih}
+\end{figure}
+
+A modo de contraste, la Figura~\ref{fig:nihmed} muestra los casos de \emph{lift} mediano por patología:
+el anclaje sigue siendo apreciable pero más difuso, ilustrando que la calidad de la localización varía
+de forma continua y que no todos los aciertos van acompañados de una atención igualmente concentrada.
+
+\begin{figure}[p]\centering
+\includegraphics[height=0.92\textheight]{fig_nih_median.png}
+\caption{Anclaje sobre NIH por patología en casos de \emph{lift} mediano. La atención sigue sobre la
+región de la lesión pero de forma más difusa que en los casos de la Figura~\ref{fig:nih}.}
+\label{fig:nihmed}
+\end{figure}
+
+\section{La morfología de la explicación no predice la fiabilidad}
+Ninguna característica geométrica del mapa de calor (concentración, dispersión, agrupamiento) separa
+de forma robusta los informes correctos de los erróneos (AUC 0,54; no significativo). Las señales
+que aparentaban serlo resultaron artefactos detectados al validarlas: la aparente relación entre
+anclaje (\emph{lift}) y acierto \textbf{desaparece} (AUC 0,52) al emplear un mapa de calor homogéneo,
+revelándose como un artefacto de contrastar mapas por-hallazgo con mapas globales. El resultado se
+confirma por tercera vía con las \textbf{cajas de anclaje propias de MAIRA-2}: el modelo localiza sus
+hallazgos \emph{inventados} con cajas anatómicamente plausibles (una caja sobre el corazón para una
+cardiomegalia inexistente, sobre el pulmón para una enfermedad intersticial inexistente), de modo que
+la presencia y la forma del anclaje acompañan a la \emph{afirmación}, no al \emph{acierto} (frecuencia
+de caja del 19\,\% en alucinaciones frente al 7\,\% en informes correctos, dirección inútil como
+señal). En resumen, ni el mapa de calor de atención, ni el \emph{lift} sobre NIH, ni las cajas
+entrenadas del propio modelo permiten leer la fiabilidad en la morfología de la explicación.
+
+\section{La incertidumbre de la decisión detecta las alucinaciones}
+Frente a la morfología, la \textbf{incertidumbre generativa} —operacionalizada como la probabilidad
+mínima de \emph{contenido} de los tokens del informe— sí discrimina la alucinación del acierto. La
+Figura~\ref{fig:sep} muestra, para las cuatro celdas, las distribuciones de esta señal en informes
+correctos, con omisión y con alucinación. \emph{Se incluye esta figura porque hace visible el
+resultado central}: las alucinaciones (rojo) se desplazan hacia la baja confianza y se separan de los
+informes correctos (verde), con la única excepción de LLaVA-Rad fuera de distribución, donde ambas
+distribuciones se solapan.
+
+\begin{figure}[t]\centering
+\includegraphics[width=\linewidth]{fig_separacion_clases.png}
+\caption{Separación de clases de la probabilidad mínima de contenido (menor $=$ más incierto) en las
+cuatro celdas del diseño. Verde: correcto; gris: omisión; rojo: alucinación; líneas discontinuas:
+medias. Las alucinaciones se concentran en la zona incierta salvo en LLaVA-Rad$\cdot$PadChest (OOD).}
+\label{fig:sep}
+\end{figure}
+
+\paragraph{El token de apertura contamina la señal (aportación metodológica).}
+La probabilidad mínima calculada sobre \emph{todo} el informe rinde de forma mediocre porque el
+mínimo recae casi siempre en el token de \emph{apertura} del informe (``The'', ``Frontal''\dots),
+que refleja incertidumbre de estilo, no de contenido, y es uniformemente baja en todos los casos.
+Excluir ese primer token —usar la probabilidad mínima de contenido— eleva sustancialmente la
+detección en las cuatro celdas (Figura~\ref{fig:token}). \emph{Se justifica esta figura porque aísla
+una decisión de diseño con impacto grande y generalizable}: el AUC pasa de 0,71 a 0,90 en Open-I y de
+0,50 a 0,80 en MAIRA-2$\cdot$PadChest, sin coste alguno. La interpretación de este efecto es
+instructiva: el primer token del informe concentra la incertidumbre \emph{estilística} —qué fórmula de
+apertura emplear (``The'', ``Frontal''\dots)—, que es alta y uniforme en todos los informes con
+independencia de su contenido, y que por tanto \emph{no discrimina} y solo añade ruido al mínimo. Al
+restringir la señal al contenido, esta pasa a reflejar la incertidumbre \emph{diagnóstica} del modelo.
+Más allá de la mejora numérica, el hallazgo ilustra un principio general aplicable a otras tareas de
+generación: al resumir la incertidumbre de una secuencia conviene separar la duda sobre la forma de la
+duda sobre el fondo, pues solo la segunda informa sobre la fiabilidad del contenido.
+
+\begin{figure}[t]\centering
+\includegraphics[width=0.92\linewidth]{fig_token_apertura.png}
+\caption{Efecto de excluir el token de apertura. Barras grises: probabilidad mínima sobre todo el
+informe; barras verdes: sobre el contenido (sin el primer token). La mejora es sistemática en las
+cuatro celdas.}
+\label{fig:token}
+\end{figure}
+
+\paragraph{La señal es agnóstica al modelo y robusta al dominio.}
+La Figura~\ref{fig:2x2} sintetiza el resultado principal como matriz \(2\times2\). \emph{Se incluye
+porque resume, en una sola imagen, la validez externa del método}: la detección es fuerte in-distribution
+(LLaVA-Rad 0,90; MAIRA-2 0,80) y, crucialmente, \textbf{se mantiene fuera de distribución para el
+modelo de mayor calidad} (MAIRA-2 0,81, prácticamente igual que su valor in-distribution). La única
+celda débil es LLaVA-Rad fuera de distribución (0,61): un generador limitado, al enfrentarse a
+imágenes ajenas a su entrenamiento, recae en un informe-plantilla emitido con confianza, lo que
+erosiona la señal. La degradación fuera de distribución es, por tanto, una limitación del generador
+débil, no del método. Este matiz es importante porque invierte la conclusión que se habría extraído de
+haber estudiado un único generador: con LLaVA-Rad aislado, la caída a 0,61 fuera de distribución
+sugeriría que la fiabilidad por incertidumbre no generaliza; el diseño cruzado revela que sí lo hace
+cuando el modelo es lo bastante bueno, y que el problema reside en que un generador débil, ante
+imágenes ajenas a su entrenamiento, deja de leer la imagen y ``rellena'' con su plantilla más
+probable, emitida con confianza. La lección práctica es doble: conviene, primero, elegir un generador
+de calidad, y segundo, calibrar y verificar la señal en cada dominio de despliegue antes de confiar en
+ella.
+
+\begin{figure}[t]\centering
+\includegraphics[width=0.72\linewidth]{fig_2x2_auc.png}
+\caption{AUC de detección de alucinaciones (probabilidad mínima de contenido) en el diseño
+\(2\times2\). Verde $=$ alto. La señal es robusta salvo en el generador débil fuera de distribución.}
+\label{fig:2x2}
+\end{figure}
+
+Las curvas ROC de la Figura~\ref{fig:roc} caracterizan el compromiso sensibilidad--especificidad de
+la señal en las cuatro celdas. \emph{Se muestran porque traducen el AUC agregado en el comportamiento
+operativo}: las tres celdas robustas dominan claramente la diagonal de azar, mientras que
+LLaVA-Rad$\cdot$PadChest se aproxima a ella, coherente con el solapamiento de la Figura~\ref{fig:sep}.
+
+\begin{figure}[t]\centering
+\includegraphics[width=0.62\linewidth]{fig_roc.png}
+\caption{Curvas ROC de detección de alucinaciones (probabilidad mínima de contenido). Tres de las
+cuatro celdas dominan la diagonal de azar; LLaVA-Rad$\cdot$PadChest (OOD) se aproxima a ella.}
+\label{fig:roc}
+\end{figure}
+
+\subsection{Ninguna señal adicional generaliza: en favor de la simplicidad}
+Se exploró si combinar la probabilidad mínima de contenido con otras señales agnósticas (entropía,
+verosimilitud media, auto-consistencia, dependencia de imagen) mejoraba la detección. La exploración
+se realizó exigiendo que cualquier mejora \emph{generalizara} sobre los tres conjuntos con suficiente
+número de alucinaciones. La Tabla~\ref{tab:senales} muestra el AUC univariante de cada señal por
+conjunto: ninguna supera de forma consistente a la probabilidad mínima de contenido. Señales fuertes
+en los conjuntos de LLaVA-Rad (entropía, verosimilitud) resultan inútiles en MAIRA-2, y la dependencia
+de imagen ayuda en MAIRA-2 pero se invierte en Open-I; son, por tanto, específicas de modelo o de
+dominio. En consecuencia, la fórmula final privilegia la \textbf{simplicidad robusta} de una única
+señal frente a un combinado sobreajustado que no transferiría.
+
+\begin{table}[t]\centering
+\caption{AUC univariante de cada señal (orientada: mayor $=$ más probable alucinación) por conjunto.
+Ninguna mejora de forma consistente a la probabilidad mínima de contenido.}
+\label{tab:senales}
+\begin{tabular}{lrrr}
+\toprule
+Señal & Open-I (LLaVA) & PadChest (LLaVA) & PadChest (MAIRA) \\ \midrule
+\textbf{min\_prob de contenido} & \textbf{0,90} & \textbf{0,57} & \textbf{0,80} \\
+Percentil 5 de probabilidad & 0,90 & 0,61 & 0,58 \\
+Verosimilitud media & 0,89 & 0,65 & 0,49 \\
+Entropía media & 0,92 & 0,65 & 0,46 \\
+Auto-consistencia & 0,73 & 0,43 & 0,65 \\
+Dependencia de imagen (blank) & 0,32 & 0,51 & 0,70 \\ \bottomrule
+\end{tabular}
+\end{table}
+
+\section{Disociación alucinación--omisión}
+La detección es \emph{asimétrica}. La Figura~\ref{fig:diso} contrasta, por celda, el AUC para separar
+alucinaciones frente a correctos y omisiones frente a correctos. \emph{Se justifica esta figura porque
+delimita con honestidad el alcance del método}: la señal detecta las alucinaciones de forma robusta
+(0,80--0,90), pero las omisiones solo de forma parcial y variable (0,47--0,85). Las omisiones no son
+siempre errores ``confiados''; como se aprecia en la Figura~\ref{fig:sep} (\mbox{distribución} gris), tienden
+a situarse \emph{entre} los correctos y las alucinaciones, cerca del umbral, y fuera de distribución
+(MAIRA-2$\cdot$Open-I) se desplazan hacia la incertidumbre. La interpretación es que, cuando el modelo
+fabrica un hallazgo, titubea; cuando lo omite emitiendo un informe normal, a menudo lo hace con
+confianza próxima a la de un informe normal correcto, aunque no siempre. En consecuencia, la fórmula
+es un \emph{detector de alucinaciones} que captura además una fracción de omisiones como beneficio
+colateral, no un detector general de error.
+
+\begin{figure}[t]\centering
+\includegraphics[width=0.82\linewidth]{fig_disociacion.png}
+\caption{Disociación: AUC para separar alucinaciones (rojo) y omisiones (gris) de los informes
+correctos, por celda. La incertidumbre detecta alucinaciones de forma robusta y omisiones solo
+parcialmente.}
+\label{fig:diso}
+\end{figure}
+
+\section{Calibración y confianza operativa}
+Para convertir la señal en una salida clínica se estudia su calibración. La Figura~\ref{fig:cal}
+representa la tasa de alucinación observada en función de la probabilidad mínima de contenido:
+\emph{se incluye porque es el fundamento empírico del ``semáforo'' de confianza}, al mostrar una
+relación monótona —a menor confianza del modelo, mayor tasa de alucinación observada— sobre la que se
+definen bandas de riesgo. Sobre Open-I, las bandas por cuartiles del grupo correcto arrojan una tasa
+de alucinación del 30\,\% en la banda roja (revisar), 6\,\% en la amarilla y $\approx$0\,\% en las
+verdes. Como priorizador de revisión (Tabla~\ref{tab:oper}), un umbral de Youden captura el 84\,\% de
+las alucinaciones —y, además, el 44\,\% de las omisiones, como beneficio colateral— revisando en
+torno a un tercio de los estudios; a especificidad del 95\,\%, el 53\,\% de las alucinaciones revisando solo el 5\,\%. La
+propuesta no es, pues, un clasificador binario —la baja prevalencia lo haría poco preciso— sino una
+\textbf{confianza calibrada con intervalo} que ordena la carga de revisión, con el radiólogo como
+decisor.
+
+\begin{figure}[t]\centering
+\includegraphics[width=0.66\linewidth]{fig_calibracion.png}
+\caption{Calibración: tasa de alucinación observada frente a la probabilidad mínima de contenido
+(media por decil, datos agregados). La relación monótona fundamenta las bandas del semáforo de
+confianza.}
+\label{fig:cal}
+\end{figure}
+
+\begin{table}[t]\centering
+\caption{Puntos de operación sobre Open-I (verdad MeSH; puntuación de contenido). FA $=$ falsas alarmas.}
+\label{tab:oper}
+\begin{tabular}{lrrr}
+\toprule
+Umbral & Recall alucinación & Recall omisión & FA \\ \midrule
+Youden          & 84\,\% & 44\,\% & 15\,\% \\
+Especificidad 90\,\% & 71\,\% & 33\,\% & 10\,\% \\
+Especificidad 95\,\% & 53\,\% & 20\,\% & 5\,\%  \\ \bottomrule
+\end{tabular}
+\end{table}
+
+\section{Traducción clínica: la confianza como semáforo}
+Los resultados anteriores solo tienen valor si pueden \emph{presentarse} al clínico de una forma que
+mejore su trabajo sin introducir nuevos riesgos. Esta sección justifica las decisiones de diseño de la
+demostración desarrollada y su encaje en un entorno médico real.
+
+\subsection{Por qué una demostración interactiva}
+Se ha optado por materializar el sistema en una \textbf{demostración interactiva} (con la biblioteca
+Gradio) que, ante una radiografía, muestra en un único panel tres elementos: el \textbf{informe}
+generado, el \textbf{anclaje} (dónde mira el modelo, mediante mapa de calor o cajas) y la
+\textbf{confianza} calibrada (cuánto fiarse). La elección responde a tres criterios. Primero, la
+\textbf{reproducibilidad y accesibilidad}: una interfaz web ligera permite que un radiólogo,
+un investigador o un evaluador reproduzcan el comportamiento del sistema sin conocimientos técnicos ni
+instalación compleja. Segundo, la \textbf{integración de las tres señales} en una sola vista, que es
+precisamente la propuesta del trabajo: informe, evidencia visual y fiabilidad no deben consultarse por
+separado. Y tercero, su idoneidad como \textbf{prototipo para un estudio de lectura} futuro, al
+permitir presentar casos controlados y recoger la interacción del clínico.
+
+\subsection{Un gradiente de confianza, no una alerta de error}
+La decisión de diseño más relevante es presentar la fiabilidad como un \textbf{semáforo en gradiente}
+—una banda continua de verde a rojo— en lugar de una \textbf{alerta binaria} de posible error. La
+justificación es doble. Por un lado, un clasificador binario sería \emph{poco preciso} dada la baja
+prevalencia de las alucinaciones: generaría muchas falsas alarmas por cada acierto (véase
+Tabla~\ref{tab:oper}). Por otro, y más importante, la literatura de sistemas de ayuda a la decisión
+clínica documenta el fenómeno de la \textbf{fatiga de alarmas}: cuando un sistema emite alertas
+frecuentes —muchas de ellas irrelevantes— los profesionales se \emph{desensibilizan} y terminan
+ignorándolas, anulando su utilidad e incluso introduciendo riesgo. Un gradiente calibrado evita este
+efecto: la mayoría de los informes fiables permanecen en verde, de baja fricción, y la atención del
+radiólogo se \textbf{prioriza} hacia la minoría de casos de riesgo elevado, en lugar de dispersarse en
+una sucesión de alertas. La confianza se convierte así en un \emph{ordenador de la carga de revisión},
+coherente con los puntos de operación de la Tabla~\ref{tab:oper}. La Figura~\ref{fig:semaforo}
+representa el semáforo con las bandas calibradas sobre Open-I.
+
+\begin{figure}[t]\centering
+\includegraphics[width=0.9\linewidth]{fig_semaforo.png}
+\caption{Semáforo de confianza en gradiente. Las bandas, definidas sobre los cuartiles de la
+distribución de los informes correctos, se anotan con la probabilidad de alucinación observada. El
+verde concentra los informes fiables (baja fricción) y el rojo prioriza la revisión.}
+\label{fig:semaforo}
+\end{figure}
+
+La Figura~\ref{fig:demo} ilustra la salida de la demostración sobre dos ejemplos reales de MAIRA-2:
+un informe con una alucinación —una fabricación de infiltrado— que el sistema sitúa en zona roja
+(baja confianza), y un informe normal correcto que sitúa en zona verde.
+
+\begin{figure}[t]\centering
+\includegraphics[width=0.47\linewidth]{fig_demo_halluc.png}\hfill
+\includegraphics[width=0.47\linewidth]{fig_demo_correct.png}
+\caption{Salida de la demostración (MAIRA-2) con el anclaje por cajas. Izquierda: informe con una
+alucinación de infiltrado, con baja confianza (zona roja). Derecha: informe normal correcto, con alta
+confianza (zona verde).}
+\label{fig:demo}
+\end{figure}
+
+\subsection{El radiólogo como decisor y la mitigación del sesgo de automatización}
+El sistema se concibe explícitamente como \textbf{asistivo, no autónomo}: no emite un diagnóstico
+final ni bloquea informes, sino que aporta evidencia (anclaje) y una estimación de fiabilidad para que
+el \textbf{radiólogo decida}. Este diseño mitiga el \textbf{sesgo de automatización} —la tendencia a
+aceptar acríticamente la salida de un sistema automático— de dos formas. Primera, el anclaje se
+presenta como puntero de \emph{dónde} mirar, no como prueba de acierto, evitando que una explicación
+plausible induzca confianza injustificada. Segunda, la leyenda del semáforo incorpora una
+\textbf{advertencia honesta}: el color mide la duda del modelo, de modo que el verde indica baja
+probabilidad de \emph{alucinación} pero \emph{no} garantiza la ausencia de \emph{omisiones}, que el
+modelo comete con confianza. Comunicar esta limitación en la propia interfaz es una salvaguarda de
+seguridad, no un detalle menor. Finalmente, la calibración es \textbf{específica de cada modelo}
+—cada generador dispone de su propia calibración del semáforo—, lo que reconoce que la relación entre
+confianza y acierto no es universal y debe establecerse por sistema antes de su despliegue.
+
+\section{Consideraciones éticas, legales y de sostenibilidad}
+El despliegue de un sistema como el propuesto en un entorno sanitario real está sujeto a un marco
+ético y normativo exigente que conviene explicitar. Desde el punto de vista \textbf{legal y
+regulatorio}, un sistema que asiste al diagnóstico se considera \emph{producto sanitario} y queda
+sujeto a la regulación europea correspondiente (Reglamento de Productos Sanitarios) y, de forma
+creciente, al Reglamento de Inteligencia Artificial de la Unión Europea, que clasifica los sistemas de
+apoyo a la decisión clínica como de \textbf{alto riesgo} y les impone requisitos de transparencia,
+supervisión humana, gestión de riesgos y trazabilidad. El diseño asistivo del presente trabajo —con el
+radiólogo como decisor y una salida de confianza explicable y calibrada— se alinea con estos
+principios, especialmente con el de \textbf{supervisión humana significativa}. En cuanto a la
+\textbf{protección de datos}, el trabajo emplea exclusivamente conjuntos de acceso libre y
+anonimizados, evitando el tratamiento de datos personales; un despliegue clínico requeriría, además,
+las garantías del Reglamento General de Protección de Datos.
+
+Desde el punto de vista \textbf{ético}, dos riesgos merecen atención. El primero es el \textbf{sesgo}:
+un modelo entrenado sobre poblaciones concretas puede rendir de forma desigual en otras, lo que este
+trabajo aborda parcialmente al evaluar la generalización a un dominio distinto y al recomendar una
+calibración específica por sistema y población antes del despliegue. El segundo es el ya mencionado
+\textbf{sesgo de automatización}, cuya mitigación se integra en el propio diseño de la interfaz. En
+cuanto a la \textbf{sostenibilidad}, el enfoque prioriza la \textbf{eficiencia}: todos los modelos se
+ejecutan cuantizados en una única tarjeta gráfica de consumo, y la señal de fiabilidad propuesta se
+obtiene \emph{sin coste adicional de inferencia} —reutiliza las probabilidades que el modelo ya
+produce—, evitando el gasto computacional de métodos que exigen múltiples generaciones o modelos
+auxiliares. Esta frugalidad favorece la accesibilidad del sistema en entornos con recursos limitados.
+
+\section{Impacto, agentes implicados y viabilidad}
+Los \textbf{agentes} implicados en un despliegue del sistema son el \textbf{radiólogo} —usuario y
+decisor—, el \textbf{servicio de radiología} —que gestiona la carga de trabajo—, el \textbf{paciente}
+—beneficiario último de una lectura más segura— y el \textbf{equipo técnico} responsable de la
+calibración y el mantenimiento. El \textbf{impacto} potencial es triple. En el plano
+\textbf{asistencial}, un priorizador de revisión bien calibrado permite concentrar la atención del
+radiólogo en los informes de mayor riesgo, mitigando la presión asistencial sin comprometer la
+seguridad. En el plano de la \textbf{seguridad del paciente}, la comunicación explícita y honesta de
+la fiabilidad —incluida la advertencia sobre las omisiones— reduce el riesgo de una confianza
+injustificada en la salida automática. Y en el plano \textbf{científico-técnico}, el trabajo aporta
+una metodología de auditoría de la fiabilidad reutilizable para otros modelos y dominios.
+
+En cuanto a la \textbf{viabilidad}, el enfoque es deliberadamente \textbf{frugal}: todos los modelos
+se ejecutan cuantizados en una única tarjeta gráfica de consumo, sin infraestructura especializada, y
+la señal de confianza no incurre en coste de inferencia adicional. El principal recurso consumido es
+el \textbf{tiempo de cómputo} de la extracción de señales y el etiquetado, mitigado mediante procesos
+reanudables. Esta frugalidad hace el sistema económicamente viable y accesible en entornos con
+recursos limitados, y compatible con su integración como módulo asistivo en flujos de trabajo
+existentes.
+
+\section{Discusión y análisis de los resultados}
+Los resultados dibujan una imagen coherente. La explicación visual de estos modelos es \emph{fiel y
+está anclada}, lo que valida su uso como puntero de ``dónde mirar''; pero la fiabilidad \textbf{no se
+lee en la forma de la explicación} —ni en el mapa de calor, ni en el \emph{lift} objetivo, ni en las
+cajas entrenadas del propio modelo— sino en la \textbf{incertidumbre de la decisión}, y de forma
+robusta solo para las alucinaciones. Esta señal, una vez depurada del token de apertura, resulta
+\emph{simple, agnóstica al modelo y disponible en inferencia}, y —a diferencia de lo que sugería el
+único generador inicial— \emph{se transfiere fuera de distribución} cuando el generador es de calidad
+suficiente. Que un modelo mejor mantenga la señal fuera de distribución (0,81) mientras el débil la
+pierde (0,61) indica que el problema no es el método sino el generador que, sin datos del dominio,
+alucina con confianza. La exploración de señales adicionales (entropía, verosimilitud,
+auto-consistencia, dependencia de imagen) mostró que ninguna mejora de forma consistente en los tres
+datasets: son específicas de modelo o de dominio, por lo que la fórmula final privilegia la
+\emph{simplicidad robusta} de una única señal frente a un combinado sobreajustado.
+
+Las omisiones quedan como problema de \textbf{sensibilidad} del generador, detectable solo en parte
+desde sus propias señales y por otra vía (mejor generador o anclaje explícito). Como aportación
+transversal, de carácter metodológico, conviene subrayar que repetidamente señales de apariencia
+fuerte (el máximo de atención, la entropía cruda confundida por la longitud, la relación
+\emph{lift}--acierto, las propias cajas del modelo) resultaron artefactos que solo un control
+cuidadoso de confusores y la validación contra referencias objetivas revelaron; en este dominio,
+\emph{validar contra verdad objetiva es imprescindible}.
+
+En relación con la literatura, estos resultados matizan y extienden el conocimiento previo. Confirman,
+por un lado, la intuición de que la incertidumbre del modelo es un mejor predictor de la alucinación
+que sus explicaciones visuales, en línea con los métodos de auto-consistencia y de estimación de
+incertidumbre desarrollados para modelos de lenguaje generales; pero aportan, por otro, tres elementos
+propios del dominio radiológico que la literatura no había establecido de forma conjunta: la
+\textbf{disociación} cuantitativa entre alucinaciones detectables y omisiones que no lo son, la
+\textbf{robustez cruzada} de la señal entre modelos y dominios —con la identificación del generador
+débil como causa de la degradación fuera de distribución— y la constatación, con las cajas de anclaje
+del propio modelo, de que ni siquiera una explicación entrenada y plausible predice el acierto. El
+valor práctico de estos hallazgos es directo: indican que un sistema de ayuda al radiólogo debe
+construir su señal de confianza sobre la incertidumbre de la decisión, comunicar honestamente su
+alcance (que no cubre las omisiones) y calibrarse por modelo antes de su despliegue.
+
+Finalmente, procede señalar las limitaciones:
+MAIRA-2 fue entrenado con PadChest, por lo que su evaluación in-distribution puede incluir solape
+train--test —mitigado usando Open-I, ajeno a su entrenamiento, como prueba fuera de distribución—; el
+número de alucinaciones por celda es reducido, lo que ensancha los intervalos de confianza; y el
+beneficio clínico real de presentar informe, anclaje y confianza al radiólogo requeriría un estudio
+prospectivo de lectura, que se propone como trabajo futuro.

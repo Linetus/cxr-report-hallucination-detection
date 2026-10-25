@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.venv/
+venv/
+
+# Secrets
+.env
+.env.*
+
+# Data, model weights and outputs (never commit medical images or derived data)
+data/
+hf_cache/
+outputs/
+*.png
+*.jpg
+*.jpeg
+*.dcm
+*.npz
+*.pt
+*.ckpt
+*.safetensors
+*.jsonl
+*.csv
+*.log
+
+# LaTeX build files
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.lof
+*.lot
+*.out
+*.run.xml
+*.toc
+*.synctex.gz
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.claude/

@@ -1,0 +1,119 @@
+# ─── Base Configuration — Radiology Report Generation TFM ───────────────────
+# Override individual keys with Hydra: python train.py model.encoder.name=vit_base_patch16_224
+
+defaults:
+  - _self_
+
+# ─── DATASET ─────────────────────────────────────────────────────────────────
+dataset:
+  name: open_i                    # "open_i" | "mimic_cxr"
+  root: data/raw/open-i
+  splits_cache: data/splits/open_i_splits.json
+  text_target: report             # "report" | "findings" | "impression"
+  split_ratios:                   # only used for Open-I (MIMIC-CXR uses official splits)
+    train: 0.70
+    val: 0.15
+    test: 0.15
+
+# ─── PREPROCESSING ───────────────────────────────────────────────────────────
+preprocessing:
+  image_size: 224
+  max_text_length: 256
+
+# ─── MODEL ───────────────────────────────────────────────────────────────────
+model:
+  encoder:
+    name: vit_base_patch16_224    # timm model name; alt: resnet50, densenet121
+    type: vit                     # vit (timm) | rad_dino (microsoft/rad-dino, congelado, 518px, 37×37)
+    pretrained: true
+    out_dim: 768                  # ViT-Base hidden dim; 2048 for ResNet-50
+    freeze_layers: 0              # 0 = finetune all; N = freeze first N blocks
+    freeze_gpt2: false            # PEFT: congela GPT-2 base, entrena solo cross-attn (M2 agresivo)
+    dropout: 0.1
+
+  cross_attention:
+    num_heads: 8
+    dropout: 0.1
+
+  decoder:
+    name: gpt2                    # HuggingFace model name; alt: distilgpt2, microsoft/BioGPT
+    pretrained: true
+    max_length: 256
+    dropout: 0.1
+
+  # Stage 1 — torre de texto para el alineamiento contrastivo (experimento de 3 brazos)
+  stage1:
+    text_tower: baseline          # baseline (GPT-2 wte) | cxrbert_tower (teacher directo) | cxrbert_kd (destilación)
+    kd_weight: 1.0                # λ del término de destilación — solo brazo cxrbert_kd
+    cxrbert_cache: outputs/cache/cxrbert_specialized_report.pt
+    cxrbert_dim: 128              # dim de la proyección vision-aligned de CXR-BERT-specialized
+    image_kd: false               # M3: destila el CLS del ViT hacia RAD-DINO (KD de imagen)
+    img_kd_weight: 1.0            # λ del término de KD de imagen
+    raddino_cache: outputs/cache/raddino_cls.pt
+
+# ─── TRAINING ────────────────────────────────────────────────────────────────
+training:
+  # Two-stage training (as per proposal methodology)
+  stage: 1                        # 1 = visual-text alignment (CLIP-style), 2 = decoder fine-tuning
+
+  # Stage 1 — Feature alignment
+  stage1:
+    epochs: 20
+    lr: 1.0e-4
+    temperature: 0.07             # InfoNCE contrastive loss temperature
+    weight_decay: 1.0e-4
+
+  # Stage 2 — Report generation fine-tuning
+  stage2:
+    epochs: 30
+    lr: 5.0e-5
+    cross_attn_lr: null           # LR mayor para la vía visual (cross-attn+gate+visual_proj); null = usa lr
+    warmup_steps: 500
+    weight_decay: 1.0e-4
+    label_smoothing: 0.1
+
+  # Hardware
+  precision: 16-mixed             # RTX 4070 (Ada Lovelace) — Tensor Cores, bf16 also supported
+  accumulate_grad_batches: 4      # effective batch = batch_size * accumulate
+  gradient_clip_val: 1.0
+
+  # Scheduler
+  scheduler: cosine               # "cosine" | "linear" | "constant"
+  min_lr: 1.0e-6
+
+# ─── DATALOADER ──────────────────────────────────────────────────────────────
+dataloader:
+  batch_size: 16
+  num_workers: 4
+  pin_memory: true
+
+# ─── EVALUATION ──────────────────────────────────────────────────────────────
+evaluation:
+  metrics:
+    - bleu_1
+    - bleu_4
+    - rouge_l
+    - meteor
+  # Clinical coherence — CheXpert labeler (only with MIMIC-CXR)
+  clinical_metrics: false
+
+# ─── XAI ─────────────────────────────────────────────────────────────────────
+xai:
+  method: attention               # "attention" | "gradcam" | "both"
+  target_layer: encoder.blocks[-1].norm1   # timm ViT layer for Grad-CAM
+  top_k_tokens: 5                 # highlight top-K report tokens in heatmap
+
+# ─── LOGGING ─────────────────────────────────────────────────────────────────
+logging:
+  backend: tensorboard            # "tensorboard" | "wandb"
+  project: tfm-radiology          # wandb project name
+  log_every_n_steps: 10
+  save_top_k: 3
+  monitor: val/rouge_l
+  mode: max
+
+# ─── PATHS ───────────────────────────────────────────────────────────────────
+paths:
+  output_dir: outputs
+  checkpoint_dir: outputs/checkpoints
+  results_dir: outputs/results

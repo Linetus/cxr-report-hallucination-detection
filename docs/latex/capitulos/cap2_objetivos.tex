@@ -1,0 +1,50 @@
+\chapter{Objetivos del TFM}
+% BORRADOR para editar a tu voz. Recomendado: 1-3 páginas.
+
+En este capítulo se establece el objetivo general del trabajo y los objetivos específicos en que
+se desglosa. Los objetivos se redactan en infinitivo y se corresponden con metas concretas
+alcanzadas al término del proyecto: uno asociado al marco teórico, otro al desarrollo
+metodológico y los restantes a la validación empírica.
+
+\section{Evolución del alcance del proyecto}
+El planteamiento inicial situaba la explicabilidad visual —la morfología del mapa de calor de
+atención— como la señal candidata para estimar la fiabilidad de un informe. La evidencia recabada
+en las primeras fases del trabajo (Capítulo~5, PI2) mostró que dicha morfología no discrimina entre
+aciertos y errores, lo que exigió una reformulación del alcance: el foco se desplazó a la
+incertidumbre de la decisión como señal alternativa, y el diseño experimental se amplió a una
+validación cruzada \(2\times2\) (dos generadores por dos dominios) para descartar que el resultado
+negativo de la explicabilidad fuese un artefacto de un único modelo o población. El propio orden de trabajo responde a una decisión deliberada: se optó por construir primero un
+\textbf{generador propio}, más pequeño y con destilación de conocimiento, precisamente para entender
+\emph{desde dentro} el funcionamiento de estos sistemas y las limitaciones específicas de un modelo
+de menor capacidad, antes de dar el salto a un modelo del estado del arte ya entrenado y tratado como
+caja cerrada. Esa fase reveló, entre otras lecciones, que las métricas de solapamiento léxico como
+ROUGE son inadecuadas para valorar el equilibrio entre acierto y alucinación (Sección~5.2), lo que
+motivó abandonarlas en favor de la corrección clínica. Junto con la combinación de cómputo en
+hardware de consumo y el acceso restringido a los grandes corpus clínicos (Sección~4.1), estas
+lecciones llevaron a elevar el análisis de explicabilidad a un modelo del estado del arte —LLaVA-Rad,
+y después MAIRA-2—, ejecutados localmente mediante cuantización en lugar de entrenados desde cero.
+Los objetivos que siguen recogen ya el alcance resultante de esta reformulación, no el planteamiento
+original.
+
+\section{Objetivo general}
+Evaluar la fidelidad y el anclaje clínico de las explicaciones visuales en la generación
+automática de informes de radiografía de tórax mediante arquitecturas encoder--decoder
+multimodales, y determinar en qué medida dichas explicaciones —o la incertidumbre del propio
+modelo— permiten estimar la fiabilidad de cada informe.
+
+\section{Objetivos específicos}
+\begin{enumerate}
+  \item \textbf{Analizar el estado del arte} en generación automática de informes radiológicos,
+  en explicabilidad de modelos transformer y en detección de incertidumbre y alucinaciones,
+  identificando el hueco que este trabajo aborda.
+  \item \textbf{Diseñar e implementar} un sistema de generación de informes encoder--decoder
+  multimodal, incorporando destilación de conocimiento desde modelos preentrenados libres como
+  respuesta metodológica a la restricción de datos, junto con un marco reutilizable de
+  explicabilidad.
+  \item \textbf{Cuantificar de forma objetiva el anclaje clínico} de la atención de un modelo
+  multimodal del estado del arte, contrastándola con anotaciones reales de localización
+  (bounding boxes de NIH ChestX-ray8).
+  \item \textbf{Determinar si la explicabilidad y la incertidumbre} del modelo permiten detectar
+  sus errores (alucinaciones y omisiones), sentando las bases de una estimación de confianza por
+  informe, agnóstica al modelo empleado.
+\end{enumerate}

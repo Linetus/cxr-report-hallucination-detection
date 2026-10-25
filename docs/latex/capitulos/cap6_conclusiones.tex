@@ -1,0 +1,202 @@
+\chapter{Conclusiones}
+% BORRADOR autónomo (2026-08-08). Editar a tu voz. UAX: empezar por objetivos específicos y
+% terminar por el general, mostrando su cumplimiento. Recomendado: 5-10 páginas.
+
+Este capítulo recupera los objetivos planteados y valora su cumplimiento, recorre las limitaciones
+y la prospectiva, y cierra con una reflexión personal.
+
+Respecto a los \textbf{objetivos específicos}, todos se han cumplido. Se ha \textbf{revisado el
+estado del arte} (Cap.~3), situando la aportación en el hueco de la explicabilidad validada de los
+MLLM de radiografía de tórax. Se ha \textbf{diseñado e implementado} un generador multimodal propio
+con destilación de conocimiento y un marco reutilizable de explicabilidad. Se ha \textbf{cuantificado
+de forma objetiva el anclaje clínico} de la atención contra anotaciones reales de localización
+(lift global 3,03). Y se ha \textbf{determinado la capacidad de la explicabilidad y la incertidumbre
+para detectar errores}, con un resultado matizado y sólido: la morfología de la explicación no
+predice la fiabilidad —lo que se confirma por triple vía, incluidas las cajas de anclaje del propio
+modelo—, pero la \textbf{incertidumbre de la decisión detecta las alucinaciones} (AUC 0,90 tras
+depurar el token de apertura), no las omisiones, que solo se captan de forma parcial.
+
+En cuanto al \textbf{objetivo general} —evaluar la fidelidad y el anclaje de las explicaciones y en
+qué medida permiten estimar la fiabilidad—, se ha alcanzado y ampliado: las explicaciones son fieles
+y ancladas, pero la fiabilidad reside en la incertidumbre de la decisión, no en el mapa de calor. Es
+más, dicha señal ha demostrado ser \textbf{agnóstica al modelo y robusta al dominio}: validada en un
+diseño \(2\times2\) (dos generadores \(\times\) dos dominios), se transfiere a un segundo modelo del
+estado del arte (MAIRA-2) y se mantiene \emph{fuera de distribución} para el generador de calidad
+suficiente (AUC 0,80--0,81), mientras que la degradación observada se atribuye al generador débil, no
+al método. La contribución es, por tanto, triple: la \textbf{auditoría objetiva del anclaje} de un
+MLLM de CXR; la \textbf{disociación} entre errores detectables (fabricaciones) e indetectables por
+confianza (omisiones); y una \textbf{señal de confianza simple, agnóstica, calibrada y validada de
+forma cruzada}, junto con su traducción clínica en una demostración interactiva. Como aportación
+metodológica menor pero de valor práctico, se documenta que \emph{excluir el token de apertura del
+informe} mejora de forma sistemática la señal de incertidumbre.
+
+El significado de conjunto de estas conclusiones puede resumirse en una idea: en los modelos
+multimodales de radiografía de tórax, la fiabilidad de un informe no se lee en \emph{lo que el modelo
+muestra} —su explicación visual— sino en \emph{lo seguro que está} al decidir, y esa seguridad es
+cuantificable, transferible entre modelos y calibrable para su uso clínico, siempre que se comunique
+con honestidad su alcance. Este desplazamiento del foco —de la explicación a la incertidumbre— es la
+contribución conceptual central del trabajo, y tiene implicaciones directas para el diseño de sistemas
+de ayuda a la decisión: la evidencia visual debe presentarse como \emph{apoyo a la localización}, no
+como garantía de acierto, y la confianza debe construirse sobre la señal interna del modelo, no sobre
+la forma de su explicación.
+
+\clearpage
+\section{Respuesta a las preguntas de investigación}
+
+\begin{table}[h]\centering
+\caption{Resumen de las cuatro preguntas de investigación (Capítulo~1) e hipótesis asociadas
+(H1--H4, Sección~4.2) frente a la evidencia obtenida.}
+\label{tab:resumen_pi}
+\begin{tabular}{lp{2.6cm}p{5.5cm}}
+\toprule
+Pregunta & Resultado & Evidencia clave \\ \midrule
+PI1 — ¿anclaje clínico? & Confirmada & Lift global 3,03; \textit{pointing-game} 0,38 \\
+PI2 — ¿morfología predice fiabilidad? & Refutada & AUC 0,54 (n.s.); confirmado por triple vía \\
+PI3 — ¿incertidumbre detecta errores? & Confirmada (asimétrica) & AUC 0,80--0,90 alucinaciones; parcial en omisiones \\
+PI4 — ¿agnóstica y robusta? & Confirmada con matiz & Transfiere a MAIRA-2; falla solo en generador débil OOD \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Recapitulando las cuatro preguntas planteadas en el Capítulo~1: en cuanto a \textbf{PI1}, la atención
+está clínicamente anclada (lift 3,03; tres veces el azar en el \textit{pointing-game}), lo que valida
+su uso como puntero de \emph{dónde} mira el modelo. Respecto a \textbf{PI2}, la morfología de la
+explicación \emph{no} predice la fiabilidad: ni el mapa de calor de atención, ni el \textit{lift}
+objetivo, ni las cajas de anclaje entrenadas del propio modelo —que localizan las alucinaciones con
+la misma plausibilidad que los hallazgos reales— separan el acierto del error. En cuanto a
+\textbf{PI3}, la incertidumbre de la decisión sí detecta los errores, pero de forma \emph{asimétrica}:
+robusta para las alucinaciones (AUC 0,80--0,90) y solo parcial para las omisiones, que tienden a
+situarse cerca del umbral. Y sobre \textbf{PI4}, la señal es agnóstica al modelo y robusta al dominio:
+se transfiere a un segundo generador y se mantiene fuera de distribución para un generador de calidad
+suficiente, degradándose solo con un generador débil que, sin datos del dominio, alucina con
+confianza. En conjunto, las cuatro preguntas quedan respondidas de forma coherente y con matices
+respaldados por la evidencia.
+
+\section{Limitaciones}
+Algunas limitaciones de las versiones preliminares se han \emph{resuelto} en el propio trabajo: la
+dependencia de un único juez se ha mitigado con \textbf{tres fuentes de verdad} concordantes; la de un
+único modelo, validando en \textbf{dos generadores}; y la de un único dominio, con la \textbf{réplica
+en PadChest-GR}. Persisten, no obstante, limitaciones reales. El número de alucinaciones por celda es
+\textbf{reducido} (entre 12 y 110), lo que ensancha los intervalos de confianza. La evaluación
+\emph{in-distribution} de MAIRA-2 sobre PadChest puede incluir \textbf{solape train--test}, al haber
+sido entrenado con ese corpus; se mitiga usando Open-I —ajeno a su entrenamiento— como prueba fuera de
+distribución, pero conviene señalarlo. La detección de \textbf{omisiones} es solo parcial: son errores
+de sensibilidad del generador, no siempre acompañados de incertidumbre. Metodológicamente, varias
+señales de forma resultaron engañosas (el máximo de atención, la entropía confundida con la longitud,
+la relación \emph{lift}--acierto), lo que obligó a un control cuidadoso de confusores. Por último, el
+\textbf{beneficio clínico no se ha demostrado empíricamente}: requeriría un estudio prospectivo de
+lectura.
+
+Varias de estas limitaciones tienen origen en las condiciones materiales del proyecto. El
+\textbf{acceso a datos} clínicos de mayor tamaño estuvo restringido: MIMIC-CXR, el corpus narrativo
+de referencia en el área, exige credenciales de PhysioNet no disponibles para este trabajo
+(Sección~4.1), lo que obligó a construir el diseño experimental sobre conjuntos abiertos de menor
+tamaño (Open-I, NIH ChestX-ray8, PadChest-GR) y es, en buena medida, la causa directa del reducido
+número de alucinaciones por celda señalado más arriba. El \textbf{cómputo} también estuvo acotado a
+una única GPU de consumo, lo que impuso ejecutar los modelos del estado del arte cuantizados a 8
+bits —sin comparación frente a precisión completa— y limitó la escala y el número de repeticiones
+de las ablaciones del modelo propio (Sección~4.4). Ninguna de estas restricciones invalida los
+resultados, que se sostienen sobre tres fuentes de verdad y dos réplicas independientes, pero sí
+marca el techo de precisión alcanzable con los recursos disponibles y es la razón principal de la
+primera línea de prospectiva (consolidación estadística).
+
+\section{Prospectiva}
+El trabajo abre varias líneas de continuación, que se ordenan de la más inmediata a la más ambiciosa.
+
+\textbf{Consolidación estadística.} La primera línea es \textbf{ampliar la muestra} de imágenes por
+celda del diseño, dado que el número de alucinaciones —el factor que limita la precisión de la
+estimación— es reducido; ampliarlo estrecharía los intervalos de confianza. En la misma dirección,
+añadir más generadores (por ejemplo, modelos con razonamiento por agentes o de otra familia) y más
+dominios reforzaría la generalidad de la conclusión sobre la robustez de la señal.
+
+\textbf{Cierre de la duda del solape.} La evaluación \emph{in-distribution} de MAIRA-2 sobre PadChest
+podría incluir solape con su entrenamiento; evaluar el modelo fuera de distribución en dominios
+verdaderamente ajenos y sin intersección con su corpus cerraría definitivamente esta cuestión.
+
+\textbf{Detección de omisiones.} Las omisiones son el error que la incertidumbre no capta de forma
+fiable, por tratarse de fallos confiados de sensibilidad. Abordarlas requeriría vías complementarias:
+mejorar la sensibilidad del propio generador, emplear un anclaje explícito que ``obligue'' a mirar
+regiones sospechosas, o recurrir a la \textbf{auto-consistencia semántica} entre múltiples muestras,
+que podría revelar la inestabilidad de un informe incompleto.
+
+\textbf{De la detección a la prevención.} Más allá de detectar la alucinación tras generarla, la señal
+de incertidumbre podría integrarse en el propio proceso de \emph{decodificación} para \textbf{prevenir}
+la fabricación —por ejemplo, penalizando las continuaciones de baja confianza o solicitando evidencia
+adicional—, convirtiendo el sistema de un detector \emph{a posteriori} en una salvaguarda \emph{a
+priori}.
+
+\textbf{Validación clínica.} Finalmente, la línea de mayor calado es un \textbf{estudio de lectura}
+prospectivo con radiólogos que mida el beneficio real de presentar informe, anclaje y confianza,
+cuantificando su efecto sobre la precisión diagnóstica, el tiempo de lectura y el riesgo de sesgo de
+automatización. Solo un estudio de este tipo puede demostrar el valor clínico que este trabajo
+fundamenta pero no llega a probar, y sería el paso natural hacia una eventual integración del sistema
+como módulo asistivo en el flujo de trabajo radiológico.
+
+\clearpage
+\section{Mejoras futuras del sistema}
+Las líneas anteriores extienden la investigación; las que siguen extienden el \textbf{sistema} en un
+sentido de ingeniería, orientado a acercarlo a un entorno de uso real.
+
+\textbf{Ampliación del catálogo de hallazgos.} El etiquetado objetivo se restringe a los hallazgos
+\emph{agudos} más frecuentes y a las ocho patologías con caja de NIH ChestX-ray8. Extender el marco a
+un catálogo más amplio —hallazgos crónicos, óseos o de dispositivos— exigiría nuevas fuentes de verdad,
+pero ampliaría la cobertura clínica real del sistema.
+
+\textbf{Integración con el flujo de trabajo radiológico.} La demostración actual es un prototipo
+\textit{standalone}; su valor práctico aumentaría integrándola como módulo dentro del visor de
+imágenes o del sistema de información radiológica (RIS/PACS) del centro, de modo que el informe, el
+anclaje y la confianza aparezcan directamente en la estación de lectura, sin cambiar la herramienta que
+el radiólogo ya usa.
+
+\textbf{Optimización de la latencia de inferencia.} El sistema se ejecuta hoy cuantizado a 8 bits en
+una única GPU de consumo (Sección~4.7); técnicas adicionales de optimización —cuantización a 4 bits,
+motores de inferencia especializados o destilación del propio generador— reducirían la latencia y el
+coste de despliegue, acercando el sistema a un uso en tiempo real durante la lectura.
+
+\textbf{Ampliación a otras modalidades.} El marco de explicabilidad e incertidumbre —agnóstico al
+generador por construcción— no depende de particularidades de la radiografía de tórax; extenderlo a
+otras modalidades con MLLM propios (tomografía computarizada, resonancia magnética, mamografía)
+permitiría comprobar si la conclusión central del trabajo —que la fiabilidad reside en la incertidumbre
+y no en la explicación visual— se sostiene fuera del dominio aquí estudiado.
+
+\textbf{Modelos de mayor escala y capacidad de imagen.} Este trabajo se ha ejecutado sobre generadores
+de 7 mil millones de parámetros y con la resolución de entrada que cada uno define por diseño,
+condicionado por el hardware de consumo disponible (Sección~6.2). Investigar con modelos de mayor
+potencia y con mayor capacidad de procesamiento de imagen —más tokens visuales, mayor resolución de
+entrada— permitiría estudiar si la morfología del mapa de calor, que en este trabajo no logró predecir
+la fiabilidad, se comporta de forma distinta en arquitecturas más grandes y con una representación
+visual más rica, cerrando una pregunta que la limitación de recursos deja abierta.
+
+\textbf{Consolidación de la portabilidad.} El trabajo ya distribuye la memoria y las demostraciones
+mediante imágenes \textbf{Docker} reproducibles (Anexo de organización del repositorio); una línea
+natural es exponer el sistema de análisis como una \textbf{API} desplegable en la nube, desacoplada de
+la interfaz Gradio actual, para que otros equipos puedan integrarlo en sus propias herramientas sin
+depender de esta implementación concreta.
+
+\section{Consideraciones finales}
+Considero que el resultado final de esta investigación fue satisfactorio, no solo por lo logrado al
+poder ``acotar'' con una métrica un umbral de alucinaciones —con el beneficio añadido de que muchas
+omisiones se sitúan precisamente en ese umbral—, sino por todo el aprendizaje que ha conllevado.
+
+Ese aprendizaje me ha enseñado, incluso creyendo que ya estaba familiarizado con el método científico,
+lo que de verdad significa el rigor en el control de confusores tras varios ``falsos positivos''.
+Cuántas veces habré creído tener algo interesante entre manos, para que la siguiente batería de
+pruebas mostrara que la hipótesis no se sostenía. Pero esa negación de la idea inicial del TFM no fue
+el final del proyecto, sino el paso de una intuición —los mapas de calor— a su refutación con
+evidencia. He aprendido a trabajar con MLLM de gran escala, con cuantización y con extracción de
+señales a escala; a comunicar un resultado negativo con la misma solidez que uno positivo; y,
+finalmente, a llegar a algo que sí era capaz de aportar.
+
+Si hoy empezara de nuevo —no con el conocimiento adquirido, sino con las aptitudes desarrolladas
+durante el Máster y el propio TFM— seguramente no habría cambiado el resultado, pues se habrían hecho
+las mismas pruebas, pero las habría hecho bien a la primera, con más rigor científico y sin dejarme
+llevar por pequeñas victorias sesgadas que acabaron en sobretrabajo antes de comprobar si realmente
+eran buenos indicios. Y, sobre todo, habría empezado el procesamiento de datos mucho antes, incluso
+mientras todavía planteaba las ideas. Me habría encantado poder validar las hipótesis con más datos,
+pero el tiempo disponible y el hardware del equipo con el que se realizó el trabajo lo complicaron.
+
+No puedo terminar este trabajo sin expresar mi deseo de que la asistencia por IA en radiología
+evolucione hacia sistemas honestos sobre su propia incertidumbre, y no solo hacia modelos cada vez más
+grandes —y, en muchos casos, aún más caja negra—, y de que se apliquen a los MLLM todos los avances de
+la IA explicable clásica, como los vistos en la asignatura de XAI del Máster. Espero que esta pequeña
+contribución sea un paso, por modesto que sea, en esa dirección.

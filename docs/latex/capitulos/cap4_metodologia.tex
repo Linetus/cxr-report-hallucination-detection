@@ -1,0 +1,398 @@
+\chapter{Marco Metodológico}
+% BORRADOR para editar a tu voz (estilo impersonal UAX). Recomendado: 5-15 páginas.
+
+En este capítulo se describe el método seguido para desarrollar y evaluar el trabajo. Se
+detallan la población y la muestra empleadas, los objetivos de investigación y sus hipótesis,
+las variables medidas y los instrumentos de evaluación, el diseño experimental y, finalmente,
+el modelo de análisis de datos. El enfoque combina el desarrollo de un sistema de generación de
+informes con un marco de evaluación de la explicabilidad, y su validación tanto sobre un modelo
+propio como sobre un modelo multimodal del estado del arte.
+
+\section{Población y muestra}
+La población objeto de estudio son los estudios de radiografía de tórax (CXR) acompañados de su
+informe clínico. Se han utilizado dos conjuntos de datos de acceso libre, seleccionados por su
+disponibilidad sin restricciones frente a alternativas como MIMIC-CXR, cuyo acceso exige
+credenciales de PhysioNet no disponibles para este trabajo.
+
+El conjunto principal es \textbf{Open-I / Indiana University CXR} \parencite{demnerfushman2016},
+que reúne 3.955 estudios y 7.470 imágenes (vistas frontal y lateral) con informes narrativos
+estructurados en secciones \textit{FINDINGS} e \textit{IMPRESSION}. La partición en
+entrenamiento, validación y prueba (70/15/15) se realiza \textbf{por identificador de estudio},
+de modo que ambas vistas de un mismo paciente permanecen en la misma partición y se evita la
+fuga de información entre conjuntos.
+
+El segundo conjunto es \textbf{NIH ChestX-ray8} \parencite{wang2017}, del que se emplean las 984
+anotaciones con \textbf{caja delimitadora (bounding box)} correspondientes a ocho patologías
+(atelectasia, cardiomegalia, derrame, infiltrado, masa, nódulo, neumonía y neumotórax). Estas
+cajas constituyen la \textbf{referencia objetiva de localización} que permite evaluar el anclaje
+clínico de la atención sin depender de un juicio subjetivo. La restricción de datos narrativos
+—Open-I es prácticamente el único conjunto libre con informes completos— motiva que la mejora
+del modelo propio se aborde mediante \textbf{destilación de conocimiento} desde modelos
+preentrenados libres, convirtiendo la limitación en una decisión metodológica.
+
+El tercer conjunto es \textbf{PadChest-GR} \parencite{padchestgr2024}, subconjunto anclado del corpus
+español PadChest, del que se emplea una muestra de estudios con \textbf{hallazgos presentes y ausentes
+anotados por radiólogo} y sus cajas. PadChest-GR cumple una doble función: proporciona una
+\textbf{segunda fuente de verdad objetiva} —independiente del juez basado en modelo de lenguaje— y
+constituye un \textbf{dominio distinto} (población española) respecto a Open-I (Estados Unidos), lo
+que permite evaluar la generalización \emph{fuera de distribución}. El cruce de ambos dominios con
+dos generadores da lugar al diseño \(2\times2\) que vertebra la validación.
+
+En cuanto al \textbf{detalle y el preprocesado}, Open-I reúne 3.955 estudios y 7.470 imágenes
+(proyecciones frontal y lateral); su partición 70/15/15 se realiza por identificador de estudio para
+que ambas vistas de un paciente permanezcan juntas y no se produzca fuga de información. De NIH se
+emplean las 984 anotaciones con caja de ocho patologías. Del subconjunto de PadChest-GR analizado
+—382 estudios, de los cuales 120 son normales y 262 presentan algún hallazgo— se extraen los hallazgos
+presentes y ausentes anotados por radiólogo. En todos los casos, las imágenes se convierten a escala de
+grises de tres canales, se redimensionan a la resolución de entrada del codificador correspondiente
+(224 píxeles para el \textit{Vision Transformer}, 518 para RAD-DINO) y se normalizan con las
+estadísticas del preentrenamiento. El texto de referencia se limpia de secciones administrativas,
+conservando \textit{Findings} e \textit{Impression}.
+
+\section{Objetivos de investigación}
+La investigación empírica se organiza en torno a tres hipótesis:
+\begin{itemize}
+  \item \textbf{H1.} La atención de un modelo multimodal de CXR está \textit{anclada
+  clínicamente}, es decir, se concentra sobre la región anatómica de la lesión.
+  \item \textbf{H2.} La \textit{forma} del mapa de calor (su morfología: concentración,
+  dispersión, etc.) permite detectar cuándo el modelo se equivoca (alucinación o error).
+  \item \textbf{H3.} La \textit{incertidumbre generativa} del modelo (las probabilidades de su
+  propia salida) permite detectar dichos errores.
+  \item \textbf{H4.} Dicha señal de incertidumbre es \textit{agnóstica al modelo y robusta al
+  dominio}: se transfiere a otro generador y a otra población distinta de la de entrenamiento.
+\end{itemize}
+Como se mostrará, H1 se confirma y H3 se sostiene, mientras que H2 se refuta de forma robusta: la
+fiabilidad no reside en la morfología de la explicación sino en la incertidumbre de la decisión del
+modelo. H4 se confirma con un matiz relevante: la señal se transfiere entre modelos y se mantiene
+fuera de distribución para un generador de calidad suficiente, mientras que un generador débil la
+pierde fuera de distribución al recaer en un informe-plantilla emitido con confianza.
+
+\section{Variables intervinientes e instrumentos de evaluación}
+Las \textbf{variables} evaluadas se agrupan en tres familias. (i) \textit{Morfología del mapa de
+calor}: concentración, dispersión (entropía, índice de Gini), agrupamiento y autocorrelación
+espacial. (ii) \textit{Incertidumbre generativa}: probabilidad del token menos seguro
+(\texttt{min\_prob}) y entropía predictiva por token. Una decisión de diseño relevante es emplear la
+\textbf{probabilidad mínima de \emph{contenido}} —excluyendo el token de apertura del informe, cuya
+incertidumbre es de estilo y no de contenido—, que mejora sustancialmente la señal (véase
+Cap.~5). (iii) \textit{Dependencia de la imagen y consistencia}: fracción de atención dirigida a los
+tokens visuales frente al texto, persistencia del hallazgo ante una imagen en blanco
+(\emph{blank\_sim}) y variabilidad entre muestras (auto-consistencia tipo SelfCheckGPT). La
+\emph{blank\_sim} resulta además un indicador de la calidad del generador: cuanto más depende de la
+imagen (menor similitud con la salida en blanco), mejor anclado está el modelo.
+
+Los \textbf{instrumentos} de evaluación son: las métricas de anclaje \textit{pointing-game},
+\textit{energy-in-bbox} y \textit{lift} (energía dentro de la caja dividida por su área, es decir,
+la mejora sobre el azar); las métricas de discriminación (área bajo la curva ROC, AUC) con
+\textit{test de permutación} e \textbf{intervalos de confianza por \emph{bootstrap}}; y el
+etiquetado del error, para el que se emplean \textbf{tres fuentes de verdad independientes} a fin de
+evitar la circularidad de un único juez: (a) el \textbf{diagnóstico estructurado oficial} (términos
+MeSH de Open-I; hallazgos presentes/ausentes anotados por radiólogo en PadChest-GR), objetivo y
+reproducible; y (b) el \textbf{juez basado en un modelo de lenguaje} (metodología tipo G-Eval), que
+compara la \textbf{narrativa completa} generada con la referencia y la clasifica como correcta,
+alucinada u omitida según una rúbrica predefinida. La concordancia entre las tres fuentes (por
+ejemplo, AUC 0,87 con juez, 0,82 con MeSH oficial sobre Open-I) sustenta la fiabilidad del
+etiquetado. El juez se ejecuta con escritura incremental y de forma reproducible sobre cada informe.
+
+\begin{table}[t]\centering
+\caption{Conjuntos de datos empleados y su función en el trabajo.}
+\label{tab:datos}
+\begin{tabular}{llll}
+\toprule
+Conjunto & Contenido & Función & Verdad \\ \midrule
+Open-I & Informes + MeSH & Estudio principal (in-dist.) & MeSH + juez \\
+NIH ChestX-ray8 & Cajas (8 patologías) & Anclaje objetivo & Cajas \\
+PadChest-GR & Presentes/ausentes + cajas & Réplica (dominio, OOD) & Radiólogo + juez \\ \bottomrule
+\end{tabular}
+\end{table}
+
+\section{El marco de explicabilidad}
+El marco de explicabilidad implementado evalúa dos ejes complementarios: \emph{dónde} mira el modelo y
+si \emph{de verdad} depende de ello. El \textbf{mapa de calor} se obtiene agregando la atención que
+los tokens del informe dirigen a los tokens visuales del codificador. Para los modelos de tipo LLaVa,
+los tokens visuales forman una rejilla de $37\times37$ (1369 parches); se promedia la atención sobre
+capas y cabezas, se restringe a los tokens visuales y se reordena en la rejilla, obteniendo un mapa
+espacial que se superpone a la imagen. Se descarta la contribución de los tokens ``sumidero''
+(posiciones de atención residual sin significado espacial). Sobre este mapa se calculan las
+\textbf{métricas de anclaje} frente a las cajas reales de NIH: el \textit{energy-in-bbox} (fracción de
+energía de atención dentro de la caja), el \textit{lift} (dicha fracción normalizada por el área,
+es decir, la mejora sobre el azar) y el \textit{pointing-game} (si el máximo del mapa cae dentro de la
+caja).
+
+La \textbf{fidelidad} de la explicación se evalúa por \textbf{perturbación}: se ocluye la región de
+máxima atención y se mide la caída de la log-probabilidad del hallazgo (\emph{occ\_drop}). Una
+explicación fiel debería producir una caída apreciable —si la región atendida realmente sustenta la
+afirmación—; su ausencia indicaría que la atención no es causalmente responsable de la salida. Como se
+detalla en el capítulo de resultados, esta y otras métricas de forma \emph{no} logran predecir la
+fiabilidad, lo que motiva el giro hacia la incertidumbre de la decisión.
+
+\section{Arquitectura del generador propio}
+El generador propio es un modelo \textbf{codificador--atención cruzada--decodificador} para la
+generación de informes de tórax. El \textbf{codificador visual} es un \textit{Vision Transformer}
+(ViT) preentrenado que produce, para cada imagen, un embedding global (CLS) y una rejilla de
+características por parche; en las variantes más avanzadas se sustituye por \textbf{RAD-DINO}
+\parencite{perezgarcia2024} congelado (518\,px, rejilla de $37\times37$ parches, 768 dimensiones),
+aprovechando un codificador de dominio de mayor calidad. El \textbf{decodificador} es un modelo de
+lenguaje GPT-2 al que se \textbf{inyecta atención cruzada} hacia las características visuales en cada
+bloque. Un aspecto clave de diseño es que dicha atención cruzada se introduce mediante una
+\textbf{compuerta inicializada a cero}: al comienzo del entrenamiento la contribución visual es nula y
+el decodificador se comporta exactamente como el GPT-2 preentrenado, lo que \emph{preserva} sus pesos
+y evita el colapso de la generación; la compuerta aprende progresivamente cuánta información visual
+incorporar.
+
+El entrenamiento se organiza en \textbf{dos etapas}. En la \textbf{Etapa 1 (alineamiento
+visual--textual)} se entrena únicamente el codificador y unas cabezas de proyección con una pérdida
+contrastiva de tipo InfoNCE (CLIP): los embeddings de imágenes e informes emparejados deben acercarse
+frente a los no emparejados. En la \textbf{Etapa 2 (ajuste \mbox{generativo})} se entrena el modelo completo
+con una pérdida de modelado de lenguaje (entropía cruzada sobre el siguiente token). Opcionalmente,
+mediante ajuste eficiente en parámetros (PEFT), se congela el GPT-2 base y se entrenan solo las capas
+de atención cruzada, reduciendo los parámetros entrenables de unos 200 a unos 5 millones y mitigando
+la ceguera a la imagen.
+
+Ante la restricción de datos narrativos, el modelo incorpora \textbf{destilación de conocimiento}, que
+se estudia mediante una ablación progresiva (M0--M3): \textbf{M0}, línea base sin destilación; en el
+eje textual, se destila desde \textbf{CXR-BERT} \parencite{boecking2022} —bien como torre de texto
+congelada que aporta un embedding clínico, bien como objetivo de destilación que el modelo
+\emph{student} aprende a predecir—; y en el eje visual (\textbf{M3}), se destila el embedding CLS del
+ViT hacia el de RAD-DINO. Esta ablación permite aislar la contribución de cada fuente de conocimiento
+externo a la calidad y al anclaje del modelo resultante. La Figura~\ref{fig:arch} esquematiza la
+arquitectura y sus dos etapas de entrenamiento.
+
+\begin{figure}[t]\centering
+\begin{tikzpicture}[
+  node distance=7mm and 20mm,
+  enc/.style={draw, rounded corners, align=center, minimum height=16mm, minimum width=22mm, font=\footnotesize, fill=blue!6},
+  dec/.style={draw, rounded corners, align=center, minimum height=16mm, minimum width=26mm, font=\footnotesize, fill=orange!8},
+  io/.style={draw, align=center, minimum height=9mm, font=\footnotesize, fill=gray!8},
+  flow/.style={-{Latex[length=2mm]}, thick}]
+  \node[io] (img) {Radiografía};
+  \node[enc, right=of img] (enc) {Codificador visual\\(ViT / RAD-DINO)};
+  \node[dec, right=of enc] (dec) {Decodificador GPT-2\\+ atención cruzada\\(compuerta $\to 0$)};
+  \node[io, right=of dec] (rep) {Informe};
+  \draw[flow] (img) -- (enc);
+  \draw[flow] (enc) -- node[above=1.5mm, font=\scriptsize, align=center]{parches\\$37{\times}37$} (dec);
+  \draw[flow] (dec) -- (rep);
+  \node[font=\scriptsize, below=3mm of enc, text width=30mm, align=center] {\textbf{Etapa 1}: alineamiento contrastivo (InfoNCE)};
+  \node[font=\scriptsize, below=3mm of dec, text width=34mm, align=center] {\textbf{Etapa 2}: ajuste generativo (modelado de lenguaje)};
+\end{tikzpicture}
+\caption{Arquitectura del generador propio: codificador visual, decodificador con atención cruzada
+mediante compuerta inicializada a cero, y las dos etapas de entrenamiento (alineamiento y generación).}
+\label{fig:arch}
+\end{figure}
+
+\section{Definición formal de las señales}
+Para garantizar la reproducibilidad, se definen formalmente las señales empleadas. Sea un informe
+generado la secuencia de tokens $(w_1,\dots,w_n)$ con probabilidades $p_t = P(w_t \mid w_{<t},
+\text{imagen})$ asignadas por el modelo en cada paso $t$.
+
+\paragraph{Incertidumbre generativa.} La señal principal es la \textbf{probabilidad mínima de
+contenido}, que excluye el token de apertura (cuya incertidumbre es de estilo y no de contenido):
+\begin{equation}
+u_{\min} \;=\; -\!\!\min_{2 \le t \le n} p_t .
+\end{equation}
+Se calcula también la \textbf{entropía predictiva} por token, $H_t = -\sum_{v} p_t(v)\log p_t(v)$, de
+la que se toma el máximo $H_{\max}=\max_t H_t$. Para eliminar su confusión con la longitud, la
+entropía se \textbf{residualiza} respecto al número de tokens $n$ mediante una regresión lineal
+$H_{\max} = \alpha + \beta n + \varepsilon$, tomando el residuo $\varepsilon$ como señal limpia.
+
+\paragraph{Auto-consistencia.} Dadas $K$ muestras $\{s_1,\dots,s_K\}$ generadas por muestreo
+estocástico, se mide su acuerdo con la generación voraz $g$ mediante la \textbf{similitud de Jaccard
+de $n$-gramas de carácter}:
+\begin{equation}
+\mathrm{sim}(a,b) = \frac{|N(a)\cap N(b)|}{|N(a)\cup N(b)|},\qquad
+c = \frac{1}{K}\sum_{k=1}^{K}\mathrm{sim}(g,s_k),
+\end{equation}
+donde $N(\cdot)$ es el conjunto de $4$-gramas de carácter. Una baja consistencia $c$ indica un
+contenido inestable entre muestras, señal candidata de alucinación.
+
+\paragraph{Dependencia de la imagen.} Se genera además un informe con la \textbf{imagen en blanco}
+$g_{\varnothing}$ y se calcula $\mathrm{blank\_sim} = \mathrm{sim}(g, g_{\varnothing})$: cuanto menor
+es, más depende de la imagen la salida real.
+
+\paragraph{Anclaje objetivo.} Sobre NIH, dado el mapa de calor normalizado $h$ y la caja $B$ de área
+relativa $|B|$, el \textbf{lift} mide la mejora sobre el azar de la energía de atención contenida en
+la caja:
+\begin{equation}
+\mathrm{lift} = \frac{\sum_{(i,j)\in B} h_{ij}}{|B|}.
+\end{equation}
+Un valor $\mathrm{lift}>1$ indica que la atención se concentra en la lesión por encima de lo
+esperable por azar.
+
+\section{Protocolo de etiquetado del error}
+La variable dependiente —\emph{correcto}, \emph{alucinación} u \emph{omisión}— se determina por dos
+mecanismos complementarios. El \textbf{etiquetado objetivo} compara los hallazgos agudos afirmados por
+el modelo con la verdad estructurada (MeSH en Open-I; presentes/ausentes en PadChest-GR): se cuenta
+alucinación cuando el modelo afirma un hallazgo agudo ausente de la referencia, y omisión cuando
+omite uno presente. El \textbf{etiquetado por juez} (G-Eval) somete cada par (informe generado,
+referencia) a un modelo de lenguaje que aplica una \textbf{rúbrica fija}: se consideran significativos
+únicamente los hallazgos \emph{agudos} (cardiomegalia, derrame, consolidación, edema, neumotórax,
+masa, nódulo, neumonía, infiltrado, atelectasia), ignorándose los crónicos, óseos, vasculares,
+técnicos o triviales; un informe es \emph{correcto} si coincide con la referencia en los hallazgos
+significativos, \emph{alucinación} si afirma uno ausente y \emph{omisión} si pierde uno presente. La
+concordancia entre ambos mecanismos valida el etiquetado y mitiga la circularidad de depender de un
+único criterio.
+
+\section{Requisitos del sistema}
+Aunque el trabajo es fundamentalmente de investigación, el sistema resultante se especifica mediante
+requisitos, lo que ordena su diseño y su evaluación. Los \textbf{requisitos funcionales} (RF) son:
+\textbf{RF1}, generar el informe de una radiografía de tórax; \textbf{RF2}, extraer en inferencia
+las señales de incertidumbre sin generaciones adicionales obligatorias; \textbf{RF3}, calcular el
+anclaje de la explicación (mapa de calor o cajas); \textbf{RF4}, estimar y \textbf{calibrar} una
+confianza por informe; \textbf{RF5}, presentar informe, anclaje y confianza de forma integrada; y
+\textbf{RF6}, priorizar la revisión mediante bandas de riesgo. Los \textbf{requisitos no funcionales}
+(RNF) son: \textbf{RNF1}, ejecutarse en una única tarjeta de 12\,GB mediante cuantización;
+\textbf{RNF2}, que la señal de confianza sea \textbf{agnóstica al modelo} y no incurra en coste de
+inferencia adicional; \textbf{RNF3}, reproducibilidad (extracción resumible, cálculo determinista);
+\textbf{RNF4}, interpretabilidad y honestidad de la salida (comunicar las limitaciones); y
+\textbf{RNF5}, portabilidad y bajo coste de despliegue.
+
+\section{Arquitectura de la solución}
+La solución se organiza en \textbf{cinco capas}. La \textbf{capa de datos} gestiona los conjuntos
+(Open-I, NIH, PadChest-GR), su descarga, anonimización y preprocesado. La \textbf{capa de modelo e
+inferencia} carga los generadores cuantizados y produce, por imagen, el informe, las probabilidades y
+entropías por token, las muestras estocásticas y la atención visual. La \textbf{capa de análisis y
+explicabilidad} calcula a partir de lo anterior las señales de incertidumbre, las métricas de anclaje
+y las etiquetas de error. La \textbf{capa de calibración} transforma la señal en una probabilidad con
+bandas de riesgo (el semáforo). Y la \textbf{capa de presentación} materializa el sistema en la
+demostración interactiva. Esta separación por capas favorece la reutilización —el marco de análisis es
+\emph{agnóstico al generador}— y facilita sustituir un modelo por otro sin alterar el resto. La
+Figura~\ref{fig:pipeline} representa el flujo completo del sistema.
+
+\begin{figure}[t]\centering
+\begin{tikzpicture}[
+  node distance=6mm and 9mm,
+  box/.style={draw, rounded corners, align=center, minimum height=9mm, minimum width=20mm, font=\footnotesize, fill=blue!5},
+  data/.style={draw, align=center, minimum height=9mm, font=\footnotesize, fill=gray!8},
+  outbox/.style={draw, rounded corners, align=center, minimum height=9mm, font=\footnotesize, fill=green!8},
+  arr/.style={-{Latex[length=2mm]}, thick}]
+  \node[data] (img) {Radiografía};
+  \node[box, right=of img] (gen) {Generador\\(LLaVA-Rad /\\MAIRA-2)};
+  \node[data, right=of gen] (sig) {Informe\\Probabilidades\\Atención};
+  \node[box, right=of sig] (an) {Análisis:\\señales +\\anclaje};
+  \node[box, right=of an] (cal) {Calibración\\(semáforo)};
+  \node[outbox, below=8mm of cal] (demo) {Demo: informe\\+ anclaje\\+ confianza};
+  \draw[arr] (img) -- (gen);
+  \draw[arr] (gen) -- (sig);
+  \draw[arr] (sig) -- (an);
+  \draw[arr] (an) -- (cal);
+  \draw[arr] (cal) -- (demo);
+  \node[data, below=8mm of an] (truth) {Verdad:\\MeSH / radiólogo\\/ cajas NIH};
+  \draw[arr] (truth) -- (an);
+\end{tikzpicture}
+\caption{Flujo del sistema: de la radiografía al informe con anclaje y confianza calibrada. El bloque
+de análisis se valida contra la verdad objetiva (MeSH, hallazgos de radiólogo, cajas de NIH).}
+\label{fig:pipeline}
+\end{figure}
+
+\section{Casos de uso}
+Se contemplan cuatro casos de uso principales. \textbf{CU-01 (radiólogo): obtener informe y confianza}
+—el usuario carga una radiografía y el sistema devuelve el informe, el anclaje y la banda de
+confianza—. \textbf{CU-02 (radiólogo): consultar el anclaje} —inspeccionar dónde sustenta el modelo su
+afirmación, como apoyo a la lectura—. \textbf{CU-03 (radiólogo): priorizar la revisión} —ordenar la
+carga de trabajo atendiendo primero a los informes en zona roja—. Y \textbf{CU-04 (investigador):
+auditar y reproducir} —extraer las señales sobre un conjunto y reproducir las métricas de anclaje y
+detección—.
+
+\section{Planificación y desarrollo}
+El proyecto se ha desarrollado de forma incremental, con control de versiones (Git) y gestión de
+tareas por incrementos, organizándose en seis fases que se describen a continuación. Cada fase produce
+un artefacto verificable —un componente de software o un resultado experimental— antes de avanzar a la
+siguiente, lo que permite congelar resultados y retomar procesos largos entre sesiones. El trabajo de
+campo experimental (extracción de señales y etiquetado sobre miles de imágenes) se ejecuta en procesos
+reanudables que sobreviven a interrupciones, dado el tiempo de cómputo en hardware de consumo.
+
+\section{Diseño experimental}
+El trabajo se estructura en seis fases experimentales.
+\begin{enumerate}
+  \item \textbf{Modelo propio (POC).} Un codificador visual (Vision Transformer) y un decodificador
+  de lenguaje (GPT-2) al que se inyecta atención cruzada en cada bloque mediante una compuerta
+  inicializada a cero, que preserva los pesos preentrenados. El entrenamiento sigue dos etapas:
+  alineamiento contrastivo (InfoNCE) y ajuste generativo. Se realiza una ablación (M0--M3) que
+  introduce progresivamente la destilación de conocimiento textual (CXR-BERT
+  \parencite{boecking2022}) y visual (RAD-DINO \parencite{perezgarcia2024}).
+  \item \textbf{Elevación a un modelo del estado del arte.} El marco de explicabilidad se aplica a
+  LLaVA-Rad, ejecutado en el hardware local mediante cuantización a 8 bits, adaptando la
+  extracción de mapas a su arquitectura de tokens visuales antepuestos.
+  \item \textbf{Anclaje objetivo.} Validación del anclaje contra las cajas de NIH.
+  \item \textbf{Detección de errores.} Estudio multi-señal de la fiabilidad, combinando morfología,
+  incertidumbre, dependencia de imagen y consistencia, con etiqueta objetiva (MeSH) y juez.
+  \item \textbf{Réplica cruzada (diseño \(2\times2\)).} La señal se valida sobre un \textbf{segundo
+  generador del estado del arte, MAIRA-2} \parencite{maira2}, y sobre un \textbf{segundo dominio,
+  PadChest-GR}, cruzando ambos factores (dos modelos \(\times\) dos dominios). MAIRA-2 se ejecuta
+  también cuantizado a 8 bits; al haber sido entrenado con PadChest, su evaluación
+  \emph{in-distribution} se realiza sobre PadChest y la evaluación \emph{fuera de distribución} sobre
+  Open-I, ajeno a su entrenamiento. Se aprovecha además su capacidad de \textbf{anclaje explícito
+  (cajas)} para contrastar por tercera vía si la localización de la explicación predice la fiabilidad.
+  \item \textbf{Calibración y confianza operativa.} La señal final se calibra para expresar la
+  fiabilidad como una probabilidad con bandas de riesgo (``semáforo''), y se materializa en una
+  \textbf{demostración interactiva} que integra informe, anclaje y confianza.
+\end{enumerate}
+
+\section{Métricas de evaluación}
+La evaluación cuantitativa se apoya en un conjunto de métricas que conviene definir formalmente.
+
+\paragraph{Discriminación (AUC--ROC).} La capacidad de una señal para separar dos clases se mide con el
+\textbf{área bajo la curva ROC}. La curva ROC representa la sensibilidad (tasa de verdaderos positivos)
+frente a la tasa de falsos positivos al variar el umbral de decisión. El AUC admite una interpretación
+probabilística: es la probabilidad de que una instancia positiva reciba una puntuación mayor que una
+negativa elegida al azar, y equivale al estadístico de Mann--Whitney,
+\begin{equation}
+\mathrm{AUC} = \frac{1}{n_{+}n_{-}}\sum_{i\in\mathcal{P}}\sum_{j\in\mathcal{N}} \mathbf{1}[s_i > s_j],
+\end{equation}
+donde $\mathcal{P}$ y $\mathcal{N}$ son los conjuntos de positivos y negativos y $s$ las puntuaciones.
+Un valor de $0{,}5$ indica ausencia de discriminación y $1{,}0$ discriminación perfecta. Se calcula
+mediante rangos para garantizar reproducibilidad.
+
+\paragraph{Significancia (test de permutación).} Para contrastar si un AUC observado supera al azar
+—especialmente con clases desbalanceadas— se emplea un \textbf{test de permutación}: se permutan
+aleatoriamente las etiquetas un número elevado de veces, se recalcula el AUC en cada permutación y se
+obtiene el $p$-valor como la fracción de valores nulos que igualan o superan al observado.
+
+\paragraph{Intervalos de confianza (\textit{bootstrap}).} La incertidumbre de la estimación se cuantifica
+por \textbf{\textit{bootstrap} estratificado}: se remuestrean con reemplazo, por separado, los
+positivos y los negativos un número elevado de veces (2000 en este trabajo), y el intervalo de
+confianza al 95\,\% se toma de los percentiles $2{,}5$ y $97{,}5$ de la distribución de AUC
+remuestreados.
+
+\paragraph{Calibración.} Que una señal discrimine no implica que esté \textbf{calibrada}. La
+calibración se evalúa con la \textbf{curva de fiabilidad}, que compara la probabilidad predicha con la
+tasa de acierto observada por grupos, y con el \textbf{\textit{Brier score}}, el error cuadrático medio
+entre la probabilidad predicha $\hat{p}_i$ y el resultado $y_i$:
+$\mathrm{Brier}=\frac{1}{n}\sum_i (\hat{p}_i - y_i)^2$. Sobre esta base se definen las bandas de riesgo
+del semáforo.
+
+\paragraph{Anclaje y similitud.} El anclaje se mide con el \textit{lift}, el \textit{energy-in-bbox} y
+el \textit{pointing-game} ya definidos; la consistencia textual, con la similitud de Jaccard de
+$n$-gramas de carácter.
+
+\section{Método científico y control de confusores}
+El trabajo sigue un enfoque \textbf{hipotético-deductivo}: se formulan hipótesis falsables (H1--H4,
+Sección~4.2) y se diseñan experimentos que puedan refutarlas. Tres principios metodológicos guían la
+investigación. Primero, la \textbf{validación contra verdad objetiva}: siempre que es posible, las
+señales se contrastan con referencias externas (cajas reales, diagnóstico estructurado) en lugar de con
+otras señales del propio modelo, y el etiquetado del error se \textbf{triangula} con tres fuentes
+independientes. Segundo, el \textbf{control de confusores}: se identifican y neutralizan las variables
+espurias que podrían simular una señal —la longitud del informe (por residualización), la posición del
+token (usando la probabilidad de contenido) o el tipo de mapa de calor (mediante comparaciones
+emparejadas)—. Tercero, la \textbf{replicación}: los hallazgos se comprueban en un diseño cruzado de dos
+modelos por dos dominios antes de darlos por robustos. Este rigor resultó decisivo: varias señales de
+apariencia prometedora (el máximo de atención, la entropía cruda, la relación \emph{lift}--acierto) se
+revelaron \textbf{artefactos} que solo un control cuidadoso de confusores permitió descartar,
+subrayando la importancia del método sobre el resultado aparente.
+
+\section{Modelo de análisis de datos}
+El análisis es fundamentalmente cuantitativo. La capacidad discriminativa de cada señal se mide
+mediante AUC univariante; las señales se combinan con regresión logística evaluada por
+\textbf{validación cruzada out-of-fold} —de modo que cada predicción se obtiene sobre datos no
+empleados en el ajuste— y su significancia se contrasta con \textbf{tests de permutación} que
+controlan el desbalance de clases. Se prestó especial atención al control de \textit{confounds}
+(régimen de la muestra, longitud del informe y artefactos del máximo de atención), validando cada
+señal frente a una referencia continua u objetiva para descartar espejismos. La exploración de
+señales adicionales se realiza \textbf{sobre los tres conjuntos a la vez}, exigiendo que cualquier
+mejora \emph{generalice}; se comprueba que ninguna combinación multi-señal supera de forma
+consistente a la probabilidad mínima de contenido por sí sola —las demás señales resultan específicas
+de modelo o de dominio—, por lo que la fórmula final privilegia la \textbf{simplicidad robusta} de
+una única señal frente a un combinado sobreajustado. Esta se \textbf{calibra} para expresar la
+fiabilidad como una probabilidad con su \textbf{intervalo de confianza (\emph{bootstrap})} y bandas
+de riesgo. El software empleado es Python (PyTorch, \texttt{transformers}, NumPy) y la cuantización se
+realiza con \texttt{bitsandbytes}; el AUC y los intervalos se calculan con estimadores basados en
+rangos para garantizar reproducibilidad.

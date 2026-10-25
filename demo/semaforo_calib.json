@@ -1,0 +1,29 @@
+{
+ "feature": "min_prob_content",
+ "direction": "higher_is_safer",
+ "P25": 0.340475,
+ "P50": 0.4047,
+ "P75": 0.4843,
+ "score_min": 0.0958,
+ "score_max": 0.6615059999999999,
+ "correct_mean": 0.4075240259740259,
+ "halluc_mean": 0.24496363636363638,
+ "zones": {
+  "rojo": {
+   "n": 335,
+   "halluc_rate": 0.296
+  },
+  "amarillo": {
+   "n": 170,
+   "halluc_rate": 0.065
+  },
+  "verde_claro": {
+   "n": 150,
+   "halluc_rate": 0.0
+  },
+  "verde_oscuro": {
+   "n": 145,
+   "halluc_rate": 0.0
+  }
+ }
+}
